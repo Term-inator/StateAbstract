@@ -1,5 +1,7 @@
 import numpy as np
 import pandas as pd
+from scipy.special import gamma, factorial, comb
+
 
 from State import Trajectory
 
@@ -65,3 +67,43 @@ def delete_threshold(data, threshold=10):
 def normalization(data):
     _range = np.max(data) - np.min(data)
     return (data - np.min(data)) / _range
+
+
+# 全局变量，用于记忆化搜索
+memo = None
+
+
+def init_memo(n, m):
+    """
+    初始化 memo 数组
+    """
+    global memo
+    memo = np.full((n + 1, m + 1), -1)
+
+
+def calc_count(K, n, m):
+    """
+    计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字 有多少种
+    """
+    if n == 0:
+        return 1 if m == 0 else 0
+    if m > n:
+        return 0
+
+    global memo
+    if memo[n - 1, m] == -1:
+        memo[n - 1, m] = calc_count(K, n - 1, m)
+    c1 = memo[n - 1, m] * m
+
+    if memo[n - 1, m - 1] == -1:
+        memo[n - 1, m - 1] = calc_count(K, n - 1, m - 1)
+    c2 = memo[n - 1, m - 1] * (K - m + 1)
+
+    return c1 + c2
+
+
+def calc_prob(K, n, m):
+    """
+    计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字的概率
+    """
+    return 1 - calc_count(K, n, m) / K ** n

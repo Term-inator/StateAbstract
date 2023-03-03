@@ -87,6 +87,14 @@ class State:
             return [self.speed, self.angle, self.offset]
         return [self.speed, self.angle, self.offset, self.cost]
 
+    def from_list(self, lst):
+        if self.cost is None:
+            self.speed = lst[0]
+            self.angle = lst[1]
+            self.offset = lst[2]
+        else:
+            self.cost = lst[3]
+
     def to_dict(self):
         return {
             'velocity_t_x': self.velocity_t_x,
@@ -211,7 +219,7 @@ class Graph:
             state_mean = mean(state_tmp)
             if state_mean is None:
                 continue
-            print(state_tag, state_mean)
+            # print(state_tag, state_mean)
             self.nodes[state_tag] = Node(state_mean)
 
     def gen(self):
