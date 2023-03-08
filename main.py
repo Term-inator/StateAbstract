@@ -1,3 +1,4 @@
+import copy
 import queue
 import threading
 
@@ -48,7 +49,7 @@ def load_states(data):
 
 
 params = {
-    'env': '../RL-Carla/output_logger/env-lane-icm dnn-dest150m-after0225-reward500/trajectory_2000.csv',
+    'env': '../RL-Carla/output_logger/env-lane-icm dnn-dest150m-after0225-reward500/trajectory_5000.csv',
     'policy': 'trajectory_vit_500.csv',
 }
 
@@ -59,14 +60,27 @@ def load_data(filename):
     return data, states
 
 
-def _cluster(K, states):
-    # model = cluster.AgglomerativeClustering(K)
-    model = cluster.Birch(n_clusters=K)
-    # model = cluster.MiniBatchKMeans(K)
+def _cluster(K, states, cluster_type):
+    """
+    1. kmeans
+    2. mini batch kmeans
+    3. birch
+    1.2. 基于划分
+    3. 基于层次
+    """
+    print(f'cluster type: {cluster_type}')
+    if cluster_type == 'kmeans':
+        model = cluster.KMeans(K)
+    elif cluster_type == 'mini_batch_kmeans':
+        model = cluster.MiniBatchKMeans(K)
+    elif cluster_type == 'birch':
+        model = cluster.Birch(n_clusters=K)
+    else:
+        raise Exception('cluster type error')
     model.fit(states.data)
     # print(model.cluster_centers_)
     # print(model.labels_)
-    joblib.dump(model, f'cluster.pkl')
+    # joblib.dump(model, f'cluster.pkl')
     return model
 
 
@@ -218,36 +232,36 @@ def check_steady(data, K, slide_window=5):
 
 
 # 用于存储模型，避免重复计算
-model_memo = {}  # K -> {model, graph, times} times为被使用的次数，达到 epoch 时清除
+model_memo = {}  # (K, cluster_type) -> {model, graph, times} times为被使用的次数，达到 epoch 时清除
 
 
-def get_model_and_graph(epoch, K, data, states, data_type='env', slide_window=5, parallel=False):
+def get_model_and_graph(epochs, K, data, states, data_type='env', cluster_type='birch', slide_window=5, parallel=False):
     if K in model_memo:
-        if model_memo[K]['times'] >= epoch:
-            model_memo.pop(K)
+        if model_memo[(K, cluster_type)]['times'] > epochs:
+            print(f'K={K}, {cluster_type} model has been used {model_memo[K]["times"]} times, clear it now.')
+            dt = model_memo.pop((K, cluster_type))
+            return dt['model'], dt['graph']
         else:
-            model_memo[K] = {
-                'model': model_memo[K].model,
-                'graph': model_memo[K].graph,
-                'times': model_memo[K].times + 1
-            }
+            model_memo[(K, cluster_type)]['times'] += 1
+            return model_memo[(K, cluster_type)]['model'], model_memo[K]['graph']
     else:
-        model = _cluster(K, states)
-        set_label(data, model, K, 'env')
+        model = _cluster(K, states, cluster_type)
+        set_label(data, model, K, data_type)
         graph = Graph(data, K)
-        model_memo[K] = {
+        model_memo[(K, cluster_type)] = {
             'model': model,
             'graph': graph,
             'times': 1
         }
-    return model_memo[K]['model'], model_memo[K]['graph']
+        return model_memo[(K, cluster_type)]['model'], model_memo[(K, cluster_type)]['graph']
 
 
-def try_K(epoch, K_min, K_max, data, states, data_type='env', slide_window=5, parallel=False):
+def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cluster_type='birch', slide_window=5,
+          calc_type=0b1111, parallel=False):
     sse_scores = []
     sc_scores = []
     ch_scores = []
-    steady_scores = []
+    st_scores = []
 
     if parallel:
         def calc_sse(data, graph, sse_scores):
@@ -269,50 +283,67 @@ def try_K(epoch, K_min, K_max, data, states, data_type='env', slide_window=5, pa
 
         # global model_memo
         for K in range(K_min, K_max):
-            print(f"Processing epoch {epoch}, K {K}")
-            model, graph = get_model_and_graph(epoch, K, data, states, data_type, slide_window, parallel)
+            print(f"Processing epoch {current_epoch}, K {K}")
+            model_read_write_lock = threading.Lock()
+            with model_read_write_lock:
+                model, graph = get_model_and_graph(epochs, K, data, states, data_type, cluster_type, slide_window,
+                                                   parallel)
 
-            sse_thread = threading.Thread(target=calc_sse, args=(data, graph, sse_scores))
-            sse_thread.start()
+            if calc_type & 0b1000:
+                sse_thread = threading.Thread(target=calc_sse, args=(data, graph, sse_scores))
+                sse_thread.start()
 
-            sc_thread = threading.Thread(target=calc_sc, args=(states, model.labels_, sc_scores))
-            sc_thread.start()
+            if calc_type & 0b0100:
+                sc_thread = threading.Thread(target=calc_sc, args=(states, model.labels_, sc_scores))
+                sc_thread.start()
 
-            ch_thread = threading.Thread(target=calc_ch, args=(states, model.labels_, ch_scores))
-            ch_thread.start()
+            if calc_type & 0b0010:
+                ch_thread = threading.Thread(target=calc_ch, args=(states, model.labels_, ch_scores))
+                ch_thread.start()
 
-            steady_thread = threading.Thread(target=calc_steady, args=(data, K, slide_window, steady_scores))
-            steady_thread.start()
+            if calc_type & 0b0001:
+                st_thread = threading.Thread(target=calc_steady, args=(data, K, slide_window, st_scores))
+                st_thread.start()
 
-            sse_thread.join()
-            sc_thread.join()
-            ch_thread.join()
-            steady_thread.join()
+            if calc_type & 0b1000:
+                sse_thread.join()
+            if calc_type & 0b0100:
+                sc_thread.join()
+            if calc_type & 0b0010:
+                ch_thread.join()
+            if calc_type & 0b0001:
+                st_thread.join()
     else:
         for K in range(K_min, K_max):
-            model, graph = get_model_and_graph(epoch, K, data, states, data_type, slide_window, parallel)
-            sse_score = SSE(data, graph)
-            sc_score = sklearn.metrics.silhouette_score(states.data, model.labels_, metric='euclidean', sample_size=1000)
-            ch_score = sklearn.metrics.calinski_harabasz_score(states.data, model.labels_)
-            steady_score = check_steady(data, K, slide_window)
+            model, graph = get_model_and_graph(epochs, K, data, states, data_type, cluster_type, slide_window, parallel)
+            if calc_type & 0b1000:
+                sse_score = SSE(data, graph)
+                sse_scores.append(sse_score)
 
-            sse_scores.append(sse_score)
-            sc_scores.append(sc_score)
-            ch_scores.append(ch_score)
-            steady_scores.append(steady_score)
+            if calc_type & 0b0100:
+                sc_score = sklearn.metrics.silhouette_score(states.data, model.labels_, metric='euclidean',
+                                                            sample_size=1000)
+                sc_scores.append(sc_score)
 
-    return sse_scores, sc_scores, ch_scores, steady_scores
+            if calc_type & 0b0010:
+                ch_score = sklearn.metrics.calinski_harabasz_score(states.data, model.labels_)
+                ch_scores.append(ch_score)
+
+            if calc_type & 0b0001:
+                st_score = check_steady(data, K, slide_window)
+                st_scores.append(st_score)
+
+    return sse_scores, sc_scores, ch_scores, st_scores
 
 
-def monte_carlo(data, states, data_type='env', epochs=20, parallel=False):
-    K_min = 10
-    K_max = 60
+def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0b1111, K_range=(10, 60), slide_window=5, epochs=1,
+                parallel=False):
+    K_min, K_max = K_range
     matx_sse = np.mat(np.zeros((epochs, K_max - K_min)))
     matx_sc = np.mat(np.zeros((epochs, K_max - K_min)))
     matx_ch = np.mat(np.zeros((epochs, K_max - K_min)))
     matx_st = np.mat(np.zeros((epochs, K_max - K_min)))
-    slide_window = 5
-    utils.init_memo(K_max, slide_window)
+    utils.init_memo(K_max, slide_window, slide_window)
 
     if parallel:
         # 创建任务队列
@@ -330,15 +361,21 @@ def monte_carlo(data, states, data_type='env', epochs=20, parallel=False):
                     # 任务队列为空，退出线程
                     return
 
-                # print(f'epoch {i}')
-                sse_scores, sc_scores, ch_scores, steady_scores = try_K(i, K_min, K_max, data, states,
-                                                                        data_type=data_type,
-                                                                        slide_window=slide_window,
-                                                                        parallel=True)
-                matx_sse[i, :] = sse_scores
-                matx_sc[i, :] = sc_scores
-                matx_ch[i, :] = ch_scores
-                matx_st[i, :] = steady_scores
+                print(f'epoch {i}')
+                sse_scores, sc_scores, ch_scores, st_scores = try_K(epochs, i, K_min, K_max, data, states,
+                                                                    data_type=data_type,
+                                                                    cluster_type=cluster_type,
+                                                                    calc_type=calc_type,
+                                                                    slide_window=slide_window,
+                                                                    parallel=True)
+                if calc_type & 0b1000:
+                    matx_sse[i, :] = sse_scores
+                if calc_type & 0b0100:
+                    matx_sc[i, :] = sc_scores
+                if calc_type & 0b0010:
+                    matx_ch[i, :] = ch_scores
+                if calc_type & 0b0001:
+                    matx_st[i, :] = st_scores
 
         # 创建n个线程并运行
         n_threads = epochs
@@ -353,51 +390,158 @@ def monte_carlo(data, states, data_type='env', epochs=20, parallel=False):
             t.join()
     else:
         for i in range(epochs):
-            sse_scores, sc_scores, ch_scores, steady_scores = try_K(i, K_min, K_max, data, states,
-                                                                    data_type=data_type,
-                                                                    slide_window=slide_window,
-                                                                    parallel=False)
-            matx_sse[i, :] = sse_scores
-            matx_sc[i, :] = sc_scores
-            matx_ch[i, :] = ch_scores
-            matx_st[i, :] = steady_scores
-
-    mean_sse = matx_sse.sum(axis=0) / epochs
-    mean_sc = matx_sc.sum(axis=0) / epochs
-    mean_ch = matx_ch.sum(axis=0) / epochs
-    mean_ch_norm = mean_ch / max(mean_ch.tolist()[0]) / 3
-    mean_st = matx_st.sum(axis=0) / epochs
+            sse_scores, sc_scores, ch_scores, st_scores = try_K(epochs, i, K_min, K_max, data, states,
+                                                                data_type=data_type,
+                                                                cluster_type=cluster_type,
+                                                                calc_type=calc_type,
+                                                                slide_window=slide_window,
+                                                                parallel=False)
+            if calc_type & 0b1000:
+                matx_sse[i, :] = sse_scores
+            if calc_type & 0b0100:
+                matx_sc[i, :] = sc_scores
+            if calc_type & 0b0010:
+                matx_ch[i, :] = ch_scores
+            if calc_type & 0b0001:
+                matx_st[i, :] = st_scores
 
     fig1 = plt.figure(figsize=(15, 8))
     ax1 = fig1.add_subplot(1, 1, 1)
     ax2 = ax1.twinx()
-    X = range(K_min, K_max)
-    ax1.plot(X, mean_sse.tolist()[0], marker='o', label='SSE')
-    ax2.plot(X, mean_sc.tolist()[0], 'r', marker='*', label='Silhouette')
-    ax2.plot(X, mean_ch_norm.tolist()[0], 'g', marker='*', label='Calinski Harabasz')
-
     ax1.set_ylabel('SSE', fontsize=20)
     ax1.set_xlabel('K', fontsize=20)
     ax2.set_ylabel('Value', fontsize=20)
     ax1.tick_params(labelsize=20)
     ax2.tick_params(labelsize=20)
-    ax1.legend(loc='lower left', fontsize=20)
-    ax2.legend(loc='upper right', fontsize=20)
-    fig1.savefig(f'./{data_type}_sse_sc_ch.png')
+
+    X = range(K_min, K_max)
 
     fig2 = plt.figure(figsize=(15, 8))
     ax3 = fig2.add_subplot(1, 1, 1)
-    ax3.plot(X, mean_st.tolist()[0], 'b', marker='o', label='Steady')
-    ax3.legend(loc='upper right', fontsize=20)
     ax3.set_xlabel('K', fontsize=20)
     ax3.set_ylabel('Value', fontsize=20)
-    fig2.savefig(f'./{data_type}_steady.png')
+
+
+    mean_sse = None
+    mean_sc = None
+    mean_ch = None
+    mean_st = None
+    if calc_type & 0b1000:
+        mean_sse = matx_sse.sum(axis=0) / epochs
+        ax1.plot(X, mean_sse.tolist()[0], marker='o', label='SSE')
+    if calc_type & 0b0100:
+        mean_sc = matx_sc.sum(axis=0) / epochs
+        ax2.plot(X, mean_sc.tolist()[0], 'r', marker='*', label='Silhouette')
+    if calc_type & 0b0010:
+        mean_ch = matx_ch.sum(axis=0) / epochs
+        mean_ch_norm = mean_ch / max(mean_ch.tolist()[0]) / 3
+        ax2.plot(X, mean_ch_norm.tolist()[0], 'g', marker='*', label='Calinski Harabasz')
+    if calc_type & 0b0001:
+        mean_st = matx_st.sum(axis=0) / epochs
+        # print(mean_st)
+        ax3.plot(X, mean_st.tolist()[0], 'b', marker='o', label='Steady')
+
+    if calc_type & 0b1000:
+        ax1.legend(loc='lower left', fontsize=20)
+    if calc_type & 0b0110:
+        ax2.legend(loc='upper right', fontsize=20)
+    if calc_type & 0b0001:
+        ax3.legend(loc='upper right', fontsize=20)
+
+    if calc_type & 0b1110:
+        fig1.savefig(f'./{data_type}_sse_sc_ch.png')
+    if calc_type & 0b0001:
+        fig2.savefig(f'./{data_type}_steady.png')
+
+    return mean_sse, mean_sc, mean_ch, mean_st
+
+
+def check_raw_data_steady(data, slide_window):
+    steady = 0
+    total_n = 0
+    states = []
+    for i in range(len(data)):
+        if data[i].state.state_type == 'start' or data[i].state.state_type == 'end':
+            states = []
+            continue
+        states.append(data[i].state.to_list())
+        # print(tags)
+        if len(states) == slide_window:
+            # center = np.mean(states, axis=0)
+            # 两两之间的距离
+            dists = []
+            for j in range(len(states)):
+                for k in range(j + 1, len(states)):
+                    dists.append(np.linalg.norm(np.array(states[j]) - np.array(states[k])))
+            steady += np.mean(dists)
+            total_n += 1
+            states.pop(0)
+    return steady / total_n
+
+
+def shuffle_raw_data(data):
+    """
+    shuffle data, 保持state.start和state.end的位置，将中间的数据打乱
+    """
+    _data = copy.deepcopy(data)
+    start_end_pairs = []
+    start = 0
+    for i in range(len(_data)):
+        if _data[i].state.state_type == 'end':
+            start_end_pairs.append((start, i))
+            start = i + 1
+    for pair in start_end_pairs:
+        np.random.shuffle(_data[pair[0]:pair[1]])
+    return _data
+
+
+def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, parallel=True):
+    # 1. kmeans
+    # 2. mini batch kmeans
+    # 3. chameleon
+    # 4. birch
+    # 5. optics
+    # 6. clique
+    algo_lst = ['kmeans', 'mini_batch_kmeans', 'agglomerative', 'birch']
+    algos = [(algo_lst[0], 'r'), (algo_lst[1], 'g'), (algo_lst[3], 'b')]
+    mean_sts = []
+    for algo, color in algos:
+        _, _, _, mean_st = monte_carlo(data, states, data_type=data_type, epochs=epochs, K_range=K_range,
+                                       calc_type=0b0001, parallel=parallel, cluster_type=algo)
+        mean_sts.append(mean_st)
+
+    fig = plt.figure(figsize=(15, 8))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.set_xlabel('K', fontsize=20)
+    ax.set_ylabel('Value', fontsize=20)
+    ax.tick_params(labelsize=20)
+
+    X = range(K_range[0], K_range[1])
+    for i in range(len(algos)):
+        ax.plot(X, mean_sts[i].tolist()[0], marker='o', label=algos[i][0], color=algos[i][1])
+
+    ax.legend(loc='lower left', fontsize=20)
+
+    fig.savefig(f'./cluster_compare.png')
 
 
 if __name__ == '__main__':
     # test K
     env_data, env_states = load_data(params['env'])
-    monte_carlo(env_data, env_states, data_type='env', epochs=20, parallel=True)
+
+    # 验证原始数据有稳定性
+    # raw_steady = check_raw_data_steady(env_data, 5)
+    # 验证打乱后的数据没有稳定性
+    # _data = shuffle_raw_data(env_data)
+    # random_steady = check_raw_data_steady(_data, 5)
+    # print(random_steady)
+    # print(raw_steady)
+
+    # 对比聚类算法
+    # cluster_compare(env_data, env_states, data_type='env', K_range=(10, 60), epochs=20, parallel=True)
+
+    # 求 K 的最佳值
+    monte_carlo(env_data, env_states, data_type='env', K_range=(10, 40), calc_type=0b0001, slide_window=7, epochs=1, parallel=True)
 
     # K = 15
     # env_data, env_states = load_data(params['env'])

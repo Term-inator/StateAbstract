@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from scipy.special import gamma, factorial, comb
 
-
 from State import Trajectory
 
 
@@ -73,12 +72,19 @@ def normalization(data):
 memo = None
 
 
-def init_memo(n, m):
+def init_memo(K_max, n, m):
     """
     初始化 memo 数组
     """
     global memo
-    memo = np.full((n + 1, m + 1), -1)
+    # memo = np.full((K_max + 1, n + 1, m + 1), -1)
+    memo = []
+    for i in range(K_max + 1):
+        memo.append([])
+        for j in range(n + 1):
+            memo[i].append([])
+            for k in range(m + 1):
+                memo[i][j].append(-1)
 
 
 def calc_count(K, n, m):
@@ -91,13 +97,13 @@ def calc_count(K, n, m):
         return 0
 
     global memo
-    if memo[n - 1, m] == -1:
-        memo[n - 1, m] = calc_count(K, n - 1, m)
-    c1 = memo[n - 1, m] * m
+    if memo[K][n - 1][m] == -1:
+        memo[K][n - 1][m] = calc_count(K, n - 1, m)
+    c1 = memo[K][n - 1][m] * m
 
-    if memo[n - 1, m - 1] == -1:
-        memo[n - 1, m - 1] = calc_count(K, n - 1, m - 1)
-    c2 = memo[n - 1, m - 1] * (K - m + 1)
+    if memo[K][n - 1][m - 1] == -1:
+        memo[K][n - 1][m - 1] = calc_count(K, n - 1, m - 1)
+    c2 = memo[K][n - 1][m - 1] * (K - m + 1)
 
     return c1 + c2
 
@@ -107,3 +113,49 @@ def calc_prob(K, n, m):
     计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字的概率
     """
     return 1 - calc_count(K, n, m) / K ** n
+
+
+def stirling(n, m):
+    res = 0
+    for i in range(m+1):
+        res += pow(-1, m-i) * pow(i, n) / (factorial(i, exact=True) * factorial(m-i, exact=True))
+    return res
+
+
+def calc_count_opt(K, n, m):
+    res = stirling(n, m)
+    for i in range(0, m):
+        res *= (K-i)
+    return round(res)
+
+
+def opt_correct_prove():
+    init_memo(40, 40, 40)
+    for K in range(2, 40):
+        for n in range(2, min(K+1, 15)):
+            for m in range(2, n+1):
+                count = calc_count(K, n, m)
+                count_opt = calc_count_opt(K, n, m)
+                if count != 0 and abs(count - count_opt)/count > 1e-6:
+                    print(f'K = {K}, n = {n}, m = {m}, wrong, ori:{calc_count(K, n, m)}, opt:{calc_count_opt(K, n, m)}')
+                else:
+                    print(f'K = {K}, n = {n}, m = {m}, correct, eps={abs(count - count_opt)}')
+            print()
+        print()
+    print()
+
+
+def delta():
+    init_memo(60, 60, 60)
+    for K in range(2, 60):
+        for n in range(2, min(K+1, 15)):
+            for m in range(2, n+1):
+                if calc_count(K, n, m) > calc_count(K, n, m-1):
+                    print('K = {}, n = {}, m = {}, inc'.format(K, n, m))
+                elif calc_count_opt(K, n, m) < calc_count_opt(K, n, m-1):
+                    print('K = {}, n = {}, m = {}, dec'.format(K, n, m))
+                else:
+                    print('K = {}, n = {}, m = {}, same'.format(K, n, m))
+            print()
+        print()
+    print()
