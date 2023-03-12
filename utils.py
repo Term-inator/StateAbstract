@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import pandas as pd
 import umap
@@ -7,25 +9,6 @@ from scipy.special import gamma, factorial, comb
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.manifold import TSNE, LocallyLinearEmbedding, MDS, Isomap, SpectralEmbedding
-
-from State import Trajectory
-
-
-def read_csv(filename):
-    data_csv = pd.read_csv(filename)
-
-    # data_csv = delete_out_three_sigma(data_csv)
-    # data_csv = delete_threshold(data_csv, threshold=20)
-
-    data = []
-    for i in data_csv.index:
-        trajectory = Trajectory()
-        # print(data_csv.loc[i].values[0:-1])
-        trajectory.load(data_csv.loc[i])
-        # print(state.__repr__())
-        data.append(trajectory)
-
-    return np.array(data)
 
 
 def three_sigma(series):
@@ -238,3 +221,25 @@ def cluster_visualize(model, data, display_type='tsne', n_components=2, display_
         ax = fig.add_subplot(111, projection='3d')
         ax.scatter(data_vis[:, 0], data_vis[:, 1], data_vis[:, 2], c=model.labels_, s=s, alpha=alpha, edgecolors='none')
         plt.show()
+
+
+def nearest_multiple(original_value, divisor, round_type='round'):
+    # 确保除数为正数
+    divisor = abs(divisor)
+
+    # 找到最接近原始值的能被除数整除的数
+    if round_type == 'round':
+        nearest = round(original_value / divisor) * divisor
+    elif round_type == 'ceil':
+        nearest = math.ceil(original_value / divisor) * divisor
+    elif round_type == 'floor':
+        nearest = math.floor(original_value / divisor) * divisor
+    else:
+        raise ValueError('round_type must be one of round, ceil, floor')
+
+    return nearest
+
+
+def expand_action_range(action_range, granularity):
+    return nearest_multiple(action_range[0], granularity, round_type='floor'), \
+        nearest_multiple(action_range[1], granularity, round_type='ceil')

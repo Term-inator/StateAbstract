@@ -1,4 +1,24 @@
 import numpy as np
+import pandas as pd
+
+import utils
+
+
+def read_csv(filename):
+    data_csv = pd.read_csv(filename)
+
+    # data_csv = delete_out_three_sigma(data_csv)
+    # data_csv = delete_threshold(data_csv, threshold=20)
+
+    data = []
+    for i in data_csv.index:
+        trajectory = Trajectory()
+        # print(data_csv.loc[i].values[0:-1])
+        trajectory.load(data_csv.loc[i])
+        # print(state.__repr__())
+        data.append(trajectory)
+
+    return np.array(data)
 
 
 def mean(lst):
@@ -60,6 +80,14 @@ class Base:
 
     def __eq__(self, other):
         return self.__hash__() == other.__hash__()
+
+    @property
+    def dimension(self):
+        return len(vars(self).keys()) - len(self.readonly)
+
+    @property
+    def headers(self):
+        return [key for key in vars(self).keys() if key not in self.readonly]
 
     def load(self, **kwargs):
         for key, value in kwargs.items():
@@ -127,34 +155,38 @@ class Action(Base):
 
 
 class ActionSpliter:
-    def __init__(self, action_range=None, granularity=None):
-        if action_range is None:
-            self.action_range = {'acc': [-3.0, 3.0], 'steer': [-0.3, 0.3]}
-        if granularity is None:
-            self.granularity = {'acc': 0.1, 'steer': 0.01}
+    def __init__(self, action_ranges, granularity):
+        self.action_ranges = action_ranges
+        self.granularity = granularity
 
-    def split(self, action: Action):
-        res = {}
-        for key, value in vars(action).items():
-            if key in action.readonly:
-                continue
-            if key in self.granularity:
-                res[key] = int(value // self.granularity[key])
-                if value == self.action_range[key][1]:
-                    res[key] -= 1
-            else:
-                raise ValueError(f'key {key} not in granularity')
-        return Action(**res)
+        for key, value in self.action_ranges.items():
+            self.action_ranges[key] = utils.expand_action_range(self.action_ranges[key], self.granularity[key])
+
+        print(self.action_ranges)
+
+    @property
+    def action_len(self):
+        size = 1
+        for key, value in self.action_ranges.items():
+            width = int((value[1] - value[0]) // self.granularity[key])
+            size *= width
+        return size
+
 
     def action2id(self, action: Action):
-        # dimension = len(vars(action).items()) - len(action.readonly)
-        res = 0
+        res = 1  # 预留 action 0
+        size = 1
         for key, value in vars(action).items():
             if key in action.readonly:
                 continue
-            width = int((self.action_range[key][1] - self.action_range[key][0]) / self.granularity[key])
-            offset = int(abs(self.action_range[key][0]) / self.granularity[key])
-            res += (value + offset) * width
+            width = int((self.action_ranges[key][1] - self.action_ranges[key][0]) // self.granularity[key])
+            offset = int(abs(self.action_ranges[key][0]) // self.granularity[key])
+            tmp = int(value // self.granularity[key])
+            if tmp == self.action_ranges[key][1]:
+                tmp -= 1
+            res += (tmp + offset) * size
+            size *= width
+        # print(f'id: {res}')
         return res
 
 
@@ -171,20 +203,20 @@ class Trajectory:
 class Node:
     def __init__(self, state):
         self.state = state
-        self.children = dict()  # (tag, action) -> weight
+        self.children = dict()  # (tag, action_id) -> weight
 
-    def add_child(self, tag, action):
-        if (tag, action) not in self.children:
-            self.children[(tag, action)] = 1
+    def add_child(self, tag, action_id):
+        if (tag, action_id) not in self.children:
+            self.children[(tag, action_id)] = 1
         else:
-            self.children[(tag, action)] += 1
+            self.children[(tag, action_id)] += 1
 
 
 class Graph:
-    def __init__(self, data, K):
+    def __init__(self, data, K, action_spliter):
         self.data = data
         self.K = K
-        self.action_spliter = ActionSpliter()
+        self.action_spliter = action_spliter
         # tag -> state
         self.nodes = {}
 
@@ -218,7 +250,7 @@ class Graph:
                 # remove loop
                 if node.state.tag == self.data[j + 1].state.tag:
                     continue
-                node.add_child(self.data[j + 1].state.tag, self.action_spliter.split(self.data[j].action))
+                node.add_child(self.data[j + 1].state.tag, self.action_spliter.action2id(self.data[j].action))
 
                 # if state_tag != 0 and state_tag != self.K + 1:
                 #     tag_mark.add(state_tag)

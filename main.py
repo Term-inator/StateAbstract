@@ -15,8 +15,7 @@ from sklearn.utils import Bunch
 import force_directed_layout
 import prism_parser
 import utils
-from State import Graph
-from utils import read_csv
+from State import Graph, read_csv, ActionSpliter
 
 matplotlib.use('TkAgg')
 
@@ -533,6 +532,29 @@ def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, p
     fig.savefig(f'./cluster_compare.png')
 
 
+def get_action_range(env_data, policy_data):
+    """
+    获取动作的范围
+    """
+    res = {}
+    headers = env_data[0].action.headers
+    for header in headers:
+        res[header] = [10e5, -10e5]
+
+    for data in [env_data, policy_data]:
+        for i in range(len(data)):
+            if data[i].state.state_type == 0 or data[i].state.state_type == 1:
+                continue
+            action_dict = data[i].action.to_dict()
+            for header in headers:
+                if action_dict[header] < res[header][0]:
+                    res[header][0] = action_dict[header]
+                if action_dict[header] > res[header][1]:
+                    res[header][1] = action_dict[header]
+
+    return res
+
+
 if __name__ == '__main__':
     # test K
     # env_data, env_states = load_data(params['env'])
@@ -559,14 +581,16 @@ if __name__ == '__main__':
     K = 15
     cluster_type = 'birch'
     env_data, env_states = load_data(params['env'])
-    model = _cluster(K, env_states, cluster_type)
-    set_label(env_data, model, K, cluster_type, 'env')
-    env_graph = Graph(env_data, K)
-    env_graph.gen()
-    #
     policy_data, policy_states = load_data(params['policy'])
+
+    model = _cluster(K, env_states, cluster_type)
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data), granularity={'acc': 0.01})
+    set_label(env_data, model, K, cluster_type, 'env')
+    env_graph = Graph(env_data, K, action_spliter=action_spliter)
+    env_graph.gen()
+
     set_label(policy_data, model, K, cluster_type, 'policy')
-    policy_graph = Graph(policy_data, K)
+    policy_graph = Graph(policy_data, K, action_spliter=action_spliter)
     policy_graph.gen()
     #
     # draw_graph(env_graph, K)
