@@ -2,26 +2,20 @@ import copy
 import queue
 import threading
 
-import joblib
-from tqdm import tqdm
-
-import force_directed_layout
-import prism_parser
-
-import numpy as np
-import pandas as pd
-import sklearn
-import sklearn.datasets as datasets
-import sklearn.cluster as cluster
-from sklearn.utils import Bunch
 import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
+import pandas as pd
 import seaborn as sns
+import sklearn
+import sklearn.cluster as cluster
+from sklearn.utils import Bunch
 
-import uppaal_parser
+import force_directed_layout
+import prism_parser
 import utils
-from State import State, Trajectory, Graph
+from State import Graph
 from utils import read_csv
 
 matplotlib.use('TkAgg')
@@ -30,8 +24,8 @@ matplotlib.use('TkAgg')
 def load_states(data):
     lst = []
     for i in range(len(data)):
-        # 开始结状态
-        if data[i].state.state_type != '':
+        # 开始结束状态
+        if data[i].state.state_type is not None:
             continue
         lst.append(data[i].state.to_list())
     lst = np.array(lst, dtype='float32')
@@ -49,8 +43,8 @@ def load_states(data):
 
 
 params = {
-    'env': '../RL-Carla/output_logger/env-lane-icm dnn-dest150m-after0225-reward500/trajectory_5000.csv',
-    'policy': 'trajectory_vit_500.csv',
+    'env': '../CTD3/project/env-TD3-icm_dnn-risk-acc-20230312/trajectory/trajectory.csv',
+    'policy': '../CTD3/project/policy-TD3_risk-acc-20230312/trajectory/trajectory.csv',
 }
 
 
@@ -73,8 +67,10 @@ def _cluster(K, states, cluster_type):
         model = cluster.KMeans(K)
     elif cluster_type == 'mini_batch_kmeans':
         model = cluster.MiniBatchKMeans(K)
+    elif cluster_type == 'agglomerative':
+        model = cluster.AgglomerativeClustering(n_clusters=K)
     elif cluster_type == 'birch':
-        model = cluster.Birch(n_clusters=K)
+        model = cluster.Birch(n_clusters=K, threshold=0.1, compute_labels=True)
     else:
         raise Exception('cluster type error')
     model.fit(states.data)
@@ -84,19 +80,32 @@ def _cluster(K, states, cluster_type):
     return model
 
 
-def set_label(data, model, K, type):
+def _predict(model, state, cluster_type):
+    if cluster_type == 'kmeans':
+        return model.predict(state)
+    elif cluster_type == 'mini_batch_kmeans':
+        return model.predict(state)
+    elif cluster_type == 'agglomerative':
+        return model.fit_predict(state)
+    elif cluster_type == 'birch':
+        return model.predict(state)
+    else:
+        raise Exception('cluster type error')
+
+
+def set_label(data, model, K, cluster_type, type):
     label_index = 0
     for i in range(len(data)):
-        if data[i].state.state_type == 'start':
+        if data[i].state.state_type == 0:
             data[i].state.tag = 0
-        elif data[i].state.state_type == 'end':
+        elif data[i].state.state_type == 1:
             data[i].state.tag = K + 1
         else:
             if type == 'env':
                 data[i].state.tag = model.labels_[label_index] + 1
                 label_index += 1
             else:
-                data[i].state.tag = model.predict([data[i].state.to_list()])[0] + 1
+                data[i].state.tag = _predict(model, [data[i].state.to_list()], cluster_type)[0] + 1
 
 
 def draw_graph(graph, K):
@@ -106,28 +115,28 @@ def draw_graph(graph, K):
         node = graph.nodes[key]
         if node is None:
             continue
-        G.add_node(node.state.tag, desc=node.state.speed)
+        G.add_node(node.state.tag)
         # print(node.state.tag, len(node.children))
         for child in node.children:
             next_state_tag = child[0]
             action = child[1]
-            G.add_edge(node.state.tag, next_state_tag, name=f'{action[0]} {action[1]} {node.children[child]}')
+            G.add_edge(node.state.tag, next_state_tag)
 
-    layout = force_directed_layout.ForceDirectedLayout(graph)
-    pos = layout.run(iterations=200)
+    # layout = force_directed_layout.ForceDirectedLayout(graph)
+    # pos = layout.run(iterations=200)
 
     color_map = []
     for node in G:
         color = '#1f78b4'
         if node == 0 or node == K + 1:
             color = 'green'
-        else:
-            if graph.nodes[node].state.cost is not None and graph.nodes[node].state.cost > 50:
-                color = 'red'
+        # else:
+        #     if graph.nodes[node].state.cost is not None and graph.nodes[node].state.cost > 50:
+        #         color = 'red'
         color_map.append(color)
 
     fig = plt.figure()
-    # pos = nx.spring_layout(G, scale=2)
+    pos = nx.spring_layout(G, scale=2)
     nx.draw(G, pos, node_color=color_map, with_labels=True, font_size=8)
     # node_labels = nx.get_node_attributes(G, 'desc')
     # edge_labels = nx.get_edge_attributes(G, 'name')
@@ -143,7 +152,7 @@ def draw_heatmap(data):
     min_y, max_y = 100000, -100000
     for i in range(len(data)):
         # 开始结束状态
-        if data[i].state.state_type != '':
+        if data[i].state.state_type is not None:
             continue
         min_x = min(min_x, data[i].state.coordinate[0])
         max_x = max(max_x, data[i].state.coordinate[0])
@@ -178,7 +187,7 @@ def draw_heatmap(data):
 
     for i in range(len(data)):
         # 开始结束状态
-        if data[i].state.state_type != '':
+        if data[i].state.state_type is not None:
             continue
         x_index = int((data[i].state.coordinate[0] - min_x) // x_span)
         y_index = int((data[i].state.coordinate[1] - min_y) // y_span)
@@ -246,7 +255,7 @@ def get_model_and_graph(epochs, K, data, states, data_type='env', cluster_type='
             return model_memo[(K, cluster_type)]['model'], model_memo[K]['graph']
     else:
         model = _cluster(K, states, cluster_type)
-        set_label(data, model, K, data_type)
+        set_label(data, model, K, cluster_type, data_type)
         graph = Graph(data, K)
         model_memo[(K, cluster_type)] = {
             'model': model,
@@ -336,8 +345,8 @@ def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cl
     return sse_scores, sc_scores, ch_scores, st_scores
 
 
-def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0b1111, K_range=(10, 60), slide_window=5, epochs=1,
-                parallel=False):
+def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0b1111, K_range=(10, 60), slide_window=5,
+                epochs=1, parallel=False):
     K_min, K_max = K_range
     matx_sse = np.mat(np.zeros((epochs, K_max - K_min)))
     matx_sc = np.mat(np.zeros((epochs, K_max - K_min)))
@@ -421,7 +430,6 @@ def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0
     ax3.set_xlabel('K', fontsize=20)
     ax3.set_ylabel('Value', fontsize=20)
 
-
     mean_sse = None
     mean_sc = None
     mean_ch = None
@@ -461,7 +469,7 @@ def check_raw_data_steady(data, slide_window):
     total_n = 0
     states = []
     for i in range(len(data)):
-        if data[i].state.state_type == 'start' or data[i].state.state_type == 'end':
+        if data[i].state.state_type == 0 or data[i].state.state_type == 1:
             states = []
             continue
         states.append(data[i].state.to_list())
@@ -487,7 +495,7 @@ def shuffle_raw_data(data):
     start_end_pairs = []
     start = 0
     for i in range(len(_data)):
-        if _data[i].state.state_type == 'end':
+        if _data[i].state.state_type == 1:
             start_end_pairs.append((start, i))
             start = i + 1
     for pair in start_end_pairs:
@@ -503,7 +511,7 @@ def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, p
     # 5. optics
     # 6. clique
     algo_lst = ['kmeans', 'mini_batch_kmeans', 'agglomerative', 'birch']
-    algos = [(algo_lst[0], 'r'), (algo_lst[1], 'g'), (algo_lst[3], 'b')]
+    algos = [(algo_lst[0], 'r'), (algo_lst[1], 'g'), (algo_lst[2], 'y'), (algo_lst[3], 'b')]
     mean_sts = []
     for algo, color in algos:
         _, _, _, mean_st = monte_carlo(data, states, data_type=data_type, epochs=epochs, K_range=K_range,
@@ -527,39 +535,45 @@ def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, p
 
 if __name__ == '__main__':
     # test K
-    env_data, env_states = load_data(params['env'])
+    # env_data, env_states = load_data(params['env'])
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
     # 验证打乱后的数据没有稳定性
     # _data = shuffle_raw_data(env_data)
     # random_steady = check_raw_data_steady(_data, 5)
-    # print(random_steady)
-    # print(raw_steady)
+    # print(f'random_steady: {random_steady}')
+    # print(f'raw_steady: {raw_steady}')
 
     # 对比聚类算法
-    # cluster_compare(env_data, env_states, data_type='env', K_range=(10, 60), epochs=20, parallel=True)
+    # cluster_compare(env_data, env_states, data_type='env', K_range=(10, 30), epochs=5, parallel=True)
 
     # 求 K 的最佳值
-    monte_carlo(env_data, env_states, data_type='env', K_range=(10, 40), calc_type=0b0001, slide_window=7, epochs=1, parallel=True)
+    # monte_carlo(env_data, env_states, data_type='env', K_range=(10, 40), calc_type=0b0001, slide_window=7, epochs=1,
+    #             parallel=True)
 
-    # K = 15
-    # env_data, env_states = load_data(params['env'])
-    # model = _cluster(K, env_states)
-    # set_label(env_data, model, K, 'env')
-    # env_graph = Graph(env_data, K)
-    # env_graph.gen()
+    # 可视化聚类结果
+    # model = _cluster(2, env_states, cluster_type='birch')
+    # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
-    # policy_data, policy_states = load_data(params['policy'])
-    # set_label(policy_data, model, K, 'policy')
-    # policy_graph = Graph(policy_data, K)
-    # policy_graph.gen()
-
-    # draw_graph(policy_graph)
-    # draw_heatmap(env_data)
-    # _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
-    # code = _parser.parse(save=True)
-    # print(code)
+    K = 15
+    cluster_type = 'birch'
+    env_data, env_states = load_data(params['env'])
+    model = _cluster(K, env_states, cluster_type)
+    set_label(env_data, model, K, cluster_type, 'env')
+    env_graph = Graph(env_data, K)
+    env_graph.gen()
+    #
+    policy_data, policy_states = load_data(params['policy'])
+    set_label(policy_data, model, K, cluster_type, 'policy')
+    policy_graph = Graph(policy_data, K)
+    policy_graph.gen()
+    #
+    # draw_graph(env_graph, K)
+    # draw_heatmap(policy_data)
+    _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
+    code = _parser.parse(save=True)
+    print(code)
     # _parser = uppaal_parser.UppaalParser(graph)
     # xml_tree = _parser.to_xml()
     # uppaal_parser.write(xml_tree, 'uppaal')

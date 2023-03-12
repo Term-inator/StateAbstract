@@ -35,6 +35,7 @@ class PrismParser:
         #     self.state_map = bidict(json.load(open("state_map.json", "r")))
         #     self.action_map = bidict(json.load(open("action_map.json", "r")))
         action_store, self.action_map = self._action_map()
+        print(action_store)
 
     # def _state_map(self):
     #     _map = {}
@@ -51,17 +52,13 @@ class PrismParser:
                 _set.add(action)
 
         for action in _set:
-            _map[self.action2id(action)] = action
+            _map[self.action2id(action)] = tuple(action.to_list())
 
         return _map, bidict(_map)
 
     def action2id(self, action):
         action_spliter = self.env_graph.action_spliter
-        width = int(
-            (action_spliter.action_steer_range[1] - action_spliter.action_steer_range[0]) / action_spliter.steer_split)
-        acc_offset = abs(action_spliter.action_acc_range[0])
-        steer_offset = abs(action_spliter.action_steer_range[0])
-        return int((action[0] + acc_offset) * width + (action[1] + steer_offset))
+        return action_spliter.action2id(action)
 
     @property
     def action_len(self):
@@ -95,7 +92,7 @@ class PrismParser:
                 action_dict[action_id][0].append(tag)
                 action_dict[action_id][1] += weight
 
-        print(action_dict)
+        # print(action_dict)
 
         codes = []
         for action_id in action_dict:
@@ -113,7 +110,7 @@ class PrismParser:
         weight_sum = 0
         for tag, action in node.children:
             weight = node.children[(tag, action)]
-            action_id = self.action_map.inverse[action]
+            action_id = self.action_map.inverse[tuple(action.to_list())]
             if action_id not in action_dict:
                 action_dict[action_id] = weight
             else:

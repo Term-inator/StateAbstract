@@ -1,6 +1,12 @@
 import numpy as np
 import pandas as pd
+import umap
+from matplotlib import pyplot as plt
+from scipy.sparse import lil_matrix
 from scipy.special import gamma, factorial, comb
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.manifold import TSNE, LocallyLinearEmbedding, MDS, Isomap, SpectralEmbedding
 
 from State import Trajectory
 
@@ -9,7 +15,7 @@ def read_csv(filename):
     data_csv = pd.read_csv(filename)
 
     # data_csv = delete_out_three_sigma(data_csv)
-    data_csv = delete_threshold(data_csv, threshold=20)
+    # data_csv = delete_threshold(data_csv, threshold=20)
 
     data = []
     for i in data_csv.index:
@@ -159,3 +165,76 @@ def delta():
             print()
         print()
     print()
+
+
+def cluster_visualize(model, data, display_type='tsne', n_components=2, display_size='normal'):
+    if display_type == 'tsne':
+        # 进行t-SNE转换
+        # 用于高维数据的降维和可视化。特别适用于聚类和类别之间的可视化差异。
+        # 计算复杂度较高，难以可视化全局结构。
+        tsne = TSNE(n_components=n_components, random_state=0, n_jobs=20)
+        data_vis = tsne.fit_transform(data)
+    elif display_type == 'pca':
+        # 进行PCA转换
+        # 用于线性降维和可视化，通常用于去除高维数据的冗余信息。可以在数据的主要方向上进行压缩，并在保留尽可能多的信息的同时减少噪音。
+        # 可能会丢失一些非线性信息，如数据中存在非线性关系，PCA可能无法很好地捕捉这些关系。
+        pca = PCA(n_components=n_components)
+        data_vis = pca.fit_transform(data)
+    elif display_type == 'lle':
+        # 进行LLE转换
+        # 用于保持局部距离关系的非线性降维。在局部上保持了数据的线性结构，并且可以有效地减少高维数据的维度。
+        # 对于数据的全局结构不太敏感，容易出现陷入局部最小值的问题。
+        lle = LocallyLinearEmbedding(n_components=n_components)
+        data_vis = lle.fit_transform(data)
+    elif display_type == 'mds':
+        # 进行MDS转换
+        # 用于保留样本间距离关系的降维算法。通常用于探索高维数据中的全局结构和相似性关系。
+        # 计算复杂度高，对于大规模数据集来说非常耗时。
+        mds = MDS(n_components=n_components)
+        data_vis = mds.fit_transform(data)
+    elif display_type == 'isomap':
+        # 进行ISOMAP转换
+        # 用于非线性降维，通常在高维数据中保留流形结构。ISOMAP对于数据的局部非线性结构保持得比较好。
+        # 计算复杂度高，需要处理高维度矩阵，耗费大量的计算资源。
+        _data = lil_matrix(data)
+        isomap = Isomap(n_components=n_components)
+        data_vis = isomap.fit_transform(_data)
+    elif display_type == 'umap':
+        # 进行UMAP转换
+        # 用于高维数据降维和可视化。UMAP旨在保留数据的全局结构，同时还可以处理复杂的非线性结构。
+        # 超参数调整较为复杂，需要花费较长的时间来确定最佳参数。
+        umap_emb = umap.UMAP(n_components=n_components)
+        data_vis = umap_emb.fit_transform(data)
+    elif display_type == 'spectral':
+        # 进行Spectral Embedding转换
+        # 用于非线性降维，将数据映射到低维空间，同时保留了数据的局部关系。与其他算法相比，Spectral Embedding具有更好的可扩展性和更高的灵活性。
+        # 需要处理高维矩阵，计算复杂度高，对于大规模数据集需要更多的时间和计算资源。
+        spectral = SpectralEmbedding(n_components=n_components)
+        data_vis = spectral.fit_transform(data)
+    elif display_type == 'lda':
+        # 进行LDA转换
+        # 用于分类任务的降维算法，通过最大化类别间的方差和最小化类别内的方差，实现降维并保留类别信息。
+        # 只适用于分类任务，如果数据集不是分类问题，则不能使用该算法。
+        lda = LinearDiscriminantAnalysis(n_components=n_components)
+        data_vis = lda.fit_transform(data)
+    else:
+        raise ValueError('display_type must be one of tsne, pca, lle, mds, isomap, umap, spectral, lda')
+
+    if display_size == 'small':
+        s = 5
+        alpha = 0.3
+    elif display_size == 'normal':
+        s = 15
+        alpha = 0.5
+    else:
+        raise ValueError('display_size must be one of small, normal')
+
+    if n_components == 2:
+        # 绘制2D图形，使用不同颜色表示不同的聚类
+        plt.scatter(data_vis[:, 0], data_vis[:, 1], c=model.labels_, s=s, alpha=alpha, edgecolors='none')
+        plt.show()
+    elif n_components == 3:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(data_vis[:, 0], data_vis[:, 1], data_vis[:, 2], c=model.labels_, s=s, alpha=alpha, edgecolors='none')
+        plt.show()

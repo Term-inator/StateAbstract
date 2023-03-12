@@ -2,12 +2,18 @@ import numpy as np
 
 
 def mean(lst):
-    if len(lst) == 0:
+    n = len(lst)
+    if n == 0:
         return None
-    elif len(lst) == 1:
+    elif n == 1:
         return lst[0]
     else:
-        return lst[0].mean(lst[1:])
+        lst_mean = lst[0]
+        for i in range(1, n):
+            lst_mean = lst_mean + lst[i]
+        lst_mean /= n
+        lst_mean.tag = lst[0].tag
+        return lst_mean
 
 
 e_speed = 10
@@ -15,176 +21,151 @@ e_distance = 20
 safe_distance = 10
 
 
-class State:
+class Base:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+        self.readonly = ['readonly']
+
+    def __add__(self, other):
+        result = Base()
+        for key, value in vars(self).items():
+            if key in self.readonly:
+                setattr(result, key, vars(self)[key])
+            else:
+                if key in vars(other):
+                    setattr(result, key, value + vars(other)[key])
+                else:
+                    setattr(result, key, value)
+        for key, value in vars(other).items():
+            if key not in vars(self):
+                setattr(result, key, value)
+        return result
+
+    def __truediv__(self, other):
+        result = Action()
+        if isinstance(other, (int, float)):
+            for key, value in vars(self).items():
+                if key in self.readonly:
+                    setattr(result, key, vars(self)[key])
+                else:
+                    setattr(result, key, value / other)
+            return result
+        else:
+            return NotImplemented
+
+    def __hash__(self):
+        return hash(tuple(self.to_list()))
+
+    def __eq__(self, other):
+        return self.__hash__() == other.__hash__()
+
+    def load(self, **kwargs):
+        for key, value in kwargs.items():
+            if key in self.readonly:
+                continue
+            setattr(self, key, value)
+
+    def __repr__(self):
+        return str(vars(self))
+
+    def to_list(self):
+        res = []
+        for key, value in vars(self).items():
+            if key in self.readonly:
+                continue
+            res.append(value)
+        return res
+
+    def from_list(self, lst):
+        for key, value in zip(vars(self).keys(), lst):
+            if key in self.readonly:
+                continue
+            setattr(self, key, value)
+
+    def to_dict(self):
+        res = {}
+        for key, value in vars(self).items():
+            if key in self.readonly:
+                continue
+            res[key] = value
+        return res
+
+
+class State(Base):
     """
     状态类，包含状态信息
     """
 
-    def __init__(self):
-        self.velocity_t_x = None
-        self.velocity_t_y = None
-        self.accel_t_x = None
-        self.accel_t_y = None
-        self.delta_yaw_t = None
-        self.dyaw_dt_t = None
-        self.lateral_dist_t = None
-        self.action_last_accel = None
-        self.accel_last_steer = None
-        self.future_angles_0 = None
-        self.future_angles_1 = None
-        self.future_angles_3 = None
+    def __init__(self, **kwargs):
+        super(State, self).__init__(**kwargs)
 
-        self.speed = 0.0
-        self.angle = 0.0
-        self.offset = 0.0
-        self.e_speed = e_speed
-        self.distance = -1
-        self.e_distance = e_distance
-        self.safe_distance = safe_distance
-        self.light_state = None
-        self.sl_distance = 50
-        self.cost = None
+        self.state_type = None
+        self.tag = None
+        self.readonly = ['readonly', 'state_type', 'tag']
 
-        self.tag = 0
-        self.state_type = ''
-        self.coordinate = None
+    def load(self, **kwargs):
+        all_zero = True
+        all_one = True
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+            all_zero &= (value == 0)
+            all_one &= (value == 1)
 
-    def load(self, data):
-        """
-        ['velocity_t_x', 'velocity_t_y', 'accel_t_x', 'accel_t_y',
-         'delta_yaw_t', 'dyaw_dt_t', 'lateral_dist_t',
-         'action_last_accel', 'accel_last_steer',
-         'future_angles_0', 'future_angles_1', 'future_angles_3',
-         'speed', 'angle', 'offset', 'e_speed', 'distance',
-         'e_distance', 'safe_distance', 'light_state', 'sl_distance',
+        if all_zero:
+            self.state_type = 0
+        elif all_one:
+            self.state_type = 1
 
-         'action_acc', 'action_steer', 'x', 'y', 'cost']
-        """
-        self.speed = data['speed']
-        self.angle = data['angle']
-        self.offset = data['offset']
-        # self.e_speed = data['e_speed']
-        # self.distance = data['distance']
-        # self.e_distance = data['e_distance']
-        # self.safe_distance = data['safe_distance']
-        # self.light_state = data['light_state']
-        # self.sl_distance = data['sl_distance']
 
-        self.coordinate = (data['x'], data['y'])
+class Action(Base):
+    def __init__(self, **kwargs):
+        super(Action, self).__init__(**kwargs)
 
-        if 'cost' in data:
-            self.cost = data['cost']
+        self.readonly = ['readonly']
 
-    def __repr__(self):
-        if self.cost is None:
-            return f'({self.speed}, {self.angle}, {self.offset}, {self.e_speed}, {self.distance}, ' \
-                   f'{self.e_distance}, {self.safe_distance}, {self.light_state}, {self.sl_distance})'
-        return f'({self.speed}, {self.angle}, {self.offset}, {self.e_speed}, {self.distance}, ' \
-               f'{self.e_distance}, {self.safe_distance}, {self.light_state}, {self.sl_distance}, {self.cost})'
 
-    def to_list(self):
-        if self.cost is None:
-            return [self.speed, self.angle, self.offset]
-        return [self.speed, self.angle, self.offset, self.cost]
+class ActionSpliter:
+    def __init__(self, action_range=None, granularity=None):
+        if action_range is None:
+            self.action_range = {'acc': [-3.0, 3.0], 'steer': [-0.3, 0.3]}
+        if granularity is None:
+            self.granularity = {'acc': 0.1, 'steer': 0.01}
 
-    def from_list(self, lst):
-        if self.cost is None:
-            self.speed = lst[0]
-            self.angle = lst[1]
-            self.offset = lst[2]
-        else:
-            self.cost = lst[3]
+    def split(self, action: Action):
+        res = {}
+        for key, value in vars(action).items():
+            if key in action.readonly:
+                continue
+            if key in self.granularity:
+                res[key] = int(value // self.granularity[key])
+                if value == self.action_range[key][1]:
+                    res[key] -= 1
+            else:
+                raise ValueError(f'key {key} not in granularity')
+        return Action(**res)
 
-    def to_dict(self):
-        return {
-            'velocity_t_x': self.velocity_t_x,
-            'velocity_t_y': self.velocity_t_y,
-            'accel_t_x': self.accel_t_x,
-            'accel_t_y': self.accel_t_y,
-            'delta_yaw_t': self.delta_yaw_t,
-            'dyaw_dt_t': self.dyaw_dt_t,
-            'lateral_dist_t': self.lateral_dist_t,
-            'action_last_accel': self.action_last_accel,
-            'accel_last_steer': self.accel_last_steer,
-            'future_angles_0': self.future_angles_0,
-            'future_angles_1': self.future_angles_1,
-            'future_angles_3': self.future_angles_3,
-
-            'speed': self.speed,
-            'angle': self.angle,
-            'offset': self.offset,
-            # 'e_speed': self.e_speed,
-            # 'distance': self.distance,
-            # 'e_distance': self.e_distance,
-            # 'safe_distance': self.safe_distance,
-            # 'light_state': self.light_state,
-            # 'sl_distance': self.sl_distance,
-        }
-
-    def add(self, state):
-        self.speed += state.speed
-        self.angle += state.angle
-        self.offset += state.offset
-        # self.e_speed += state.e_speed
-        # self.distance += state.distance
-        # self.e_distance += state.e_distance
-        # self.safe_distance += state.safe_distance
-        # self.light_state = np.random.choice([self.light_state, state.light_state], 1)[0]
-        # self.sl_distance += state.sl_distance
-        if self.cost is not None:
-            self.cost += state.cost
-
-    def divide(self, n):
-        self.speed /= n
-        self.angle /= n
-        self.offset /= n
-        # self.e_speed /= n
-        # self.distance /= n
-        # self.e_distance /= n
-        # self.safe_distance /= n
-        # self.sl_distance /= n
-        if self.cost is not None:
-            self.cost /= n
-
-    def mean(self, states):
-        state_mean = State()
-        for state in states:
-            state_mean.add(state)
-        state_mean.divide(len(states))
-        state_mean.tag = states[0].tag
-        return state_mean
+    def action2id(self, action: Action):
+        # dimension = len(vars(action).items()) - len(action.readonly)
+        res = 0
+        for key, value in vars(action).items():
+            if key in action.readonly:
+                continue
+            width = int((self.action_range[key][1] - self.action_range[key][0]) / self.granularity[key])
+            offset = int(abs(self.action_range[key][0]) / self.granularity[key])
+            res += (value + offset) * width
+        return res
 
 
 class Trajectory:
     def __init__(self):
         self.state = State()
-        self.action = [0, 0]
+        self.action = Action()
 
     def load(self, data):
-        self.state.load(data)
-        self.action[0] = data['action_acc']
-        self.action[1] = data['action_steer']
-
-        if self.state.speed == 0:
-            if self.action[0] == 0:
-                self.state.state_type = 'start'
-            else:
-                self.state.state_type = 'end'
-
-
-class ActionSpliter:
-    def __init__(self, action_acc_range=None, action_steer_range=None, acc_split=0.5, steer_split=0.05):
-        if action_steer_range is None:
-            action_steer_range = [-0.3, 0.3]
-        if action_acc_range is None:
-            action_acc_range = [-3.0, 3.0]
-        self.action_acc_range = action_acc_range
-        self.action_steer_range = action_steer_range
-        self.acc_split = acc_split
-        self.steer_split = steer_split
-
-    def split(self, action):
-        return action[0] // self.acc_split, action[1] // self.steer_split
+        self.state.load(**data.iloc[0:2])
+        self.action.load(**data.iloc[2:3])
 
 
 class Node:
