@@ -26,7 +26,7 @@ def delete_out_three_sigma(data):
     data：待检测的DataFrame
     """
     out_index = []  # 保存要删除的行索引
-    col = [data.columns.get_loc('x'), data.columns.get_loc('y')]
+    col = [0, 1]
     for j in col:  # 对每一列分别用3sigma原则处理
         index = three_sigma(data.iloc[:, j])
         print(data.iloc[:, j][index])

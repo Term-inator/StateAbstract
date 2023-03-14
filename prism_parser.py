@@ -1,23 +1,3 @@
-import json
-
-from State import State
-
-
-# class MyEncoder(json.JSONEncoder):
-#     def default(self, obj):
-#         if isinstance(obj, bytes):
-#             return str(obj, encoding='utf-8')
-#         elif isinstance(obj, int):
-#             return int(obj)
-#         elif isinstance(obj, float):
-#             return float(obj)
-#         elif isinstance(obj, State):
-#             return obj.to_dict()
-#         # elif isinstance(obj, array):
-#         #    return obj.tolist()
-#         else:
-#             return super(MyEncoder, self).default(obj)
-
 
 class PrismParser:
     def __init__(self, K, env_graph, policy_graph):
@@ -90,6 +70,9 @@ class PrismParser:
             updates.append([f'{weight}/{weight_sum}' if weight_sum != 0 else '', f'(action\'={action_id}) & (sched\'=1)'])
         return self.add_transition(f'(state={node.state.tag}) & (sched=0)', updates=updates)
 
+    def policy_reward(self, node):
+        return f'state={node.state.tag} : {node.state.reward};'
+
     def declaration(self):
         d = f'''
 mdp
@@ -117,10 +100,13 @@ endmodule
 
     def parse_policy(self):
         t = ""
+        r = ""
         for tag in self.policy_graph.nodes:
             if tag == self.node_num - 1:
                 continue
             t += self.policy_transition(self.policy_graph.nodes[tag], signal='update') + "\n"
+            if tag != 0:
+                r += self.policy_reward(self.policy_graph.nodes[tag]) + "\n"
 
         code = f'''
 
@@ -129,6 +115,10 @@ action: [0..{self.env_graph.action_spliter.action_len}];
 
 {t}
 endmodule
+
+rewards
+{r}
+endrewards
 '''
         return code
 

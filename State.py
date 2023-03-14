@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -7,7 +9,7 @@ import utils
 def read_csv(filename):
     data_csv = pd.read_csv(filename)
 
-    # data_csv = delete_out_three_sigma(data_csv)
+    # data_csv = utils.delete_out_three_sigma(data_csv)
     # data_csv = delete_threshold(data_csv, threshold=20)
 
     data = []
@@ -46,7 +48,9 @@ class Base:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-        self.readonly = ['readonly']
+        self.readonly = ['cluster_exclude', 'readonly']
+        self.cluster_exclude = []
+        self.cluster_exclude.extend(self.readonly)
 
     def __add__(self, other):
         result = Base()
@@ -83,11 +87,11 @@ class Base:
 
     @property
     def dimension(self):
-        return len(vars(self).keys()) - len(self.readonly)
+        return len(vars(self).keys()) - len(self.cluster_exclude)
 
     @property
     def headers(self):
-        return [key for key in vars(self).keys() if key not in self.readonly]
+        return [key for key in vars(self).keys() if key not in self.cluster_exclude]
 
     def load(self, **kwargs):
         for key, value in kwargs.items():
@@ -101,18 +105,22 @@ class Base:
     def to_list(self):
         res = []
         for key, value in vars(self).items():
-            if key in self.readonly:
+            if key in self.cluster_exclude:
                 continue
             res.append(value)
         return res
 
     def from_list(self, lst):
         for key, value in zip(vars(self).keys(), lst):
-            if key in self.readonly:
+            if key in self.cluster_exclude:
                 continue
             setattr(self, key, value)
 
     def to_dict(self):
+        """
+        for json
+        :return:
+        """
         res = {}
         for key, value in vars(self).items():
             if key in self.readonly:
@@ -131,7 +139,9 @@ class State(Base):
 
         self.state_type = None
         self.tag = None
-        self.readonly = ['readonly', 'state_type', 'tag']
+        self.readonly = ['cluster_exclude', 'readonly', 'state_type', 'tag']
+        self.cluster_exclude = ['reward']
+        self.cluster_exclude.extend(self.readonly)
 
     def load(self, **kwargs):
         all_zero = True
@@ -151,7 +161,9 @@ class Action(Base):
     def __init__(self, **kwargs):
         super(Action, self).__init__(**kwargs)
 
-        self.readonly = ['readonly']
+        self.readonly = ['cluster_exclude', 'readonly']
+        self.cluster_exclude = []
+        self.cluster_exclude.extend(self.readonly)
 
 
 class ActionSpliter:
@@ -171,7 +183,6 @@ class ActionSpliter:
             width = int((value[1] - value[0]) // self.granularity[key])
             size *= width
         return size
-
 
     def action2id(self, action: Action):
         res = 1  # 预留 action 0
@@ -196,7 +207,7 @@ class Trajectory:
         self.action = Action()
 
     def load(self, data):
-        self.state.load(**data.iloc[0:2])
+        self.state.load(**data.iloc[0:2], **data.iloc[3:4])
         self.action.load(**data.iloc[2:3])
 
 
@@ -220,8 +231,6 @@ class Graph:
         # tag -> state
         self.nodes = {}
 
-        self.gen_nodes()
-
     def gen_nodes(self):
         for state_tag in range(0, self.K + 1 + 1):
             state_tmp = []
@@ -232,10 +241,9 @@ class Graph:
             state_mean = mean(state_tmp)
             if state_mean is None:
                 continue
-            # print(state_tag, state_mean)
             self.nodes[state_tag] = Node(state_mean)
 
-    def gen(self):
+    def gen_edges(self):
         for key in self.nodes:
             node = self.nodes[key]
             for j in range(len(self.data) - 1):
@@ -248,8 +256,8 @@ class Graph:
                     continue
 
                 # remove loop
-                if node.state.tag == self.data[j + 1].state.tag:
-                    continue
+                # if node.state.tag == self.data[j + 1].state.tag:
+                #     continue
                 node.add_child(self.data[j + 1].state.tag, self.action_spliter.action2id(self.data[j].action))
 
                 # if state_tag != 0 and state_tag != self.K + 1:

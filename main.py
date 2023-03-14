@@ -1,4 +1,6 @@
 import copy
+import os
+import pickle
 import queue
 import threading
 
@@ -43,7 +45,7 @@ def load_states(data):
 
 params = {
     'env': '../CTD3/project/env-TD3-icm_dnn-risk-acc-20230312/trajectory/trajectory.csv',
-    'policy': '../CTD3/project/policy-TD3_risk-acc-20230312/trajectory/trajectory.csv',
+    'policy': 'policy_trajectory.csv',
 }
 
 
@@ -243,7 +245,8 @@ def check_steady(data, K, slide_window=5):
 model_memo = {}  # (K, cluster_type) -> {model, graph, times} times为被使用的次数，达到 epoch 时清除
 
 
-def get_model_and_graph(epochs, K, data, states, data_type='env', cluster_type='birch', slide_window=5, parallel=False):
+def get_model_and_graph(epochs, K, data, states, action_spliter, data_type='env', cluster_type='birch', slide_window=5,
+                        parallel=False):
     if K in model_memo:
         if model_memo[(K, cluster_type)]['times'] > epochs:
             print(f'K={K}, {cluster_type} model has been used {model_memo[K]["times"]} times, clear it now.')
@@ -255,7 +258,8 @@ def get_model_and_graph(epochs, K, data, states, data_type='env', cluster_type='
     else:
         model = _cluster(K, states, cluster_type)
         set_label(data, model, K, cluster_type, data_type)
-        graph = Graph(data, K)
+        graph = Graph(data, K, action_spliter=action_spliter)
+        graph.gen_nodes()
         model_memo[(K, cluster_type)] = {
             'model': model,
             'graph': graph,
@@ -264,8 +268,8 @@ def get_model_and_graph(epochs, K, data, states, data_type='env', cluster_type='
         return model_memo[(K, cluster_type)]['model'], model_memo[(K, cluster_type)]['graph']
 
 
-def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cluster_type='birch', slide_window=5,
-          calc_type=0b1111, parallel=False):
+def try_K(epochs, current_epoch, K_min, K_max, data, states, action_spliter, data_type='env', cluster_type='birch',
+          slide_window=5, calc_type=0b1111, parallel=False):
     sse_scores = []
     sc_scores = []
     ch_scores = []
@@ -294,8 +298,10 @@ def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cl
             print(f"Processing epoch {current_epoch}, K {K}")
             model_read_write_lock = threading.Lock()
             with model_read_write_lock:
-                model, graph = get_model_and_graph(epochs, K, data, states, data_type, cluster_type, slide_window,
-                                                   parallel)
+                model, graph = get_model_and_graph(epochs=epochs, K=K, data=data, states=states,
+                                                   action_spliter=action_spliter,
+                                                   data_type=data_type, cluster_type=cluster_type,
+                                                   slide_window=slide_window, parallel=parallel)
 
             if calc_type & 0b1000:
                 sse_thread = threading.Thread(target=calc_sse, args=(data, graph, sse_scores))
@@ -323,7 +329,10 @@ def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cl
                 st_thread.join()
     else:
         for K in range(K_min, K_max):
-            model, graph = get_model_and_graph(epochs, K, data, states, data_type, cluster_type, slide_window, parallel)
+            model, graph = get_model_and_graph(epochs=epochs, K=K, data=data, states=states,
+                                               action_spliter=action_spliter,
+                                               data_type=data_type, cluster_type=cluster_type,
+                                               slide_window=slide_window, parallel=parallel)
             if calc_type & 0b1000:
                 sse_score = SSE(data, graph)
                 sse_scores.append(sse_score)
@@ -344,8 +353,8 @@ def try_K(epochs, current_epoch, K_min, K_max, data, states, data_type='env', cl
     return sse_scores, sc_scores, ch_scores, st_scores
 
 
-def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0b1111, K_range=(10, 60), slide_window=5,
-                epochs=1, parallel=False):
+def monte_carlo(data, states, action_spliter, data_type='env', cluster_type='birch', calc_type=0b1111, K_range=(10, 60),
+                slide_window=5, epochs=1, parallel=False):
     K_min, K_max = K_range
     matx_sse = np.mat(np.zeros((epochs, K_max - K_min)))
     matx_sc = np.mat(np.zeros((epochs, K_max - K_min)))
@@ -371,6 +380,7 @@ def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0
 
                 print(f'epoch {i}')
                 sse_scores, sc_scores, ch_scores, st_scores = try_K(epochs, i, K_min, K_max, data, states,
+                                                                    action_spliter=action_spliter,
                                                                     data_type=data_type,
                                                                     cluster_type=cluster_type,
                                                                     calc_type=calc_type,
@@ -399,6 +409,7 @@ def monte_carlo(data, states, data_type='env', cluster_type='birch', calc_type=0
     else:
         for i in range(epochs):
             sse_scores, sc_scores, ch_scores, st_scores = try_K(epochs, i, K_min, K_max, data, states,
+                                                                action_spliter=action_spliter,
                                                                 data_type=data_type,
                                                                 cluster_type=cluster_type,
                                                                 calc_type=calc_type,
@@ -502,7 +513,7 @@ def shuffle_raw_data(data):
     return _data
 
 
-def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, parallel=True):
+def cluster_compare(data, states, action_spliter, data_type='env', K_range=(10, 60), epochs=1, parallel=True):
     # 1. kmeans
     # 2. mini batch kmeans
     # 3. chameleon
@@ -513,8 +524,8 @@ def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, p
     algos = [(algo_lst[0], 'r'), (algo_lst[1], 'g'), (algo_lst[2], 'y'), (algo_lst[3], 'b')]
     mean_sts = []
     for algo, color in algos:
-        _, _, _, mean_st = monte_carlo(data, states, data_type=data_type, epochs=epochs, K_range=K_range,
-                                       calc_type=0b0001, parallel=parallel, cluster_type=algo)
+        _, _, _, mean_st = monte_carlo(data, states, action_spliter=action_spliter, data_type=data_type, epochs=epochs,
+                                       K_range=K_range, calc_type=0b0001, parallel=parallel, cluster_type=algo)
         mean_sts.append(mean_st)
 
     fig = plt.figure(figsize=(15, 8))
@@ -535,6 +546,7 @@ def cluster_compare(data, states, data_type='env', K_range=(10, 60), epochs=1, p
 def get_action_range(env_data, policy_data):
     """
     获取动作的范围
+    policy_data: {state_tag: {action_dict, reward}}
     """
     res = {}
     headers = env_data[0].action.headers
@@ -557,47 +569,51 @@ def get_action_range(env_data, policy_data):
 
 if __name__ == '__main__':
     # test K
-    # env_data, env_states = load_data(params['env'])
+    env_data, env_states = load_data(params['env'])
 
     # 验证原始数据有稳定性
-    # raw_steady = check_raw_data_steady(env_data, 5)
+    raw_steady = check_raw_data_steady(env_data, 5)
     # 验证打乱后的数据没有稳定性
-    # _data = shuffle_raw_data(env_data)
-    # random_steady = check_raw_data_steady(_data, 5)
-    # print(f'random_steady: {random_steady}')
-    # print(f'raw_steady: {raw_steady}')
+    _data = shuffle_raw_data(env_data)
+    random_steady = check_raw_data_steady(_data, 5)
+    print(f'random_steady: {random_steady}')
+    print(f'raw_steady: {raw_steady}')
 
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.1})
     # 对比聚类算法
-    # cluster_compare(env_data, env_states, data_type='env', K_range=(10, 30), epochs=5, parallel=True)
-
+    # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 30), epochs=5, parallel=True)
+    #
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, data_type='env', K_range=(10, 40), calc_type=0b0001, slide_window=7, epochs=1,
-    #             parallel=True)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(4, 24), calc_type=0b1111,
+    #             slide_window=4, epochs=1, parallel=True)
 
     # 可视化聚类结果
-    # model = _cluster(2, env_states, cluster_type='birch')
+    # model = _cluster(10, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
-    K = 15
-    cluster_type = 'birch'
-    env_data, env_states = load_data(params['env'])
-    policy_data, policy_states = load_data(params['policy'])
-
-    model = _cluster(K, env_states, cluster_type)
-    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data), granularity={'acc': 0.01})
-    set_label(env_data, model, K, cluster_type, 'env')
-    env_graph = Graph(env_data, K, action_spliter=action_spliter)
-    env_graph.gen()
-
-    set_label(policy_data, model, K, cluster_type, 'policy')
-    policy_graph = Graph(policy_data, K, action_spliter=action_spliter)
-    policy_graph.gen()
+    # K = 10
+    # cluster_type = 'birch'
+    # env_data, env_states = load_data(params['env'])
+    # policy_data, policy_states = load_data(params['policy'])
     #
+    # model = _cluster(K, env_states, cluster_type)
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data), granularity={'acc': 0.01})
+    # set_label(env_data, model, K, cluster_type, 'env')
+    # env_graph = Graph(env_data, K, action_spliter=action_spliter)
+    # env_graph.gen_nodes()
+    # env_graph.gen_edges()
+    #
+    # set_label(policy_data, model, K, cluster_type, 'policy')
+    # policy_graph = Graph(policy_data, K, action_spliter=action_spliter)
+    # policy_graph.gen_nodes()
+    # policy_graph.gen_edges()
+    #
+    # _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
+    # code = _parser.parse(save=True)
+    # print(code)
+
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)
-    _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
-    code = _parser.parse(save=True)
-    print(code)
     # _parser = uppaal_parser.UppaalParser(graph)
     # xml_tree = _parser.to_xml()
     # uppaal_parser.write(xml_tree, 'uppaal')
