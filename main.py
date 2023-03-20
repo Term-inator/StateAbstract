@@ -2,7 +2,9 @@ import copy
 import os
 import pickle
 import queue
+import re
 import threading
+from time import sleep
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -12,12 +14,14 @@ import pandas as pd
 import seaborn as sns
 import sklearn
 import sklearn.cluster as cluster
+from scipy.interpolate import griddata
 from sklearn.utils import Bunch
+import subprocess
 
 import force_directed_layout
 import prism_parser
 import utils
-from State import Graph, read_csv, ActionSpliter
+from State import Graph, read_csv, ActionSpliter, EnvType
 
 matplotlib.use('TkAgg')
 
@@ -44,13 +48,15 @@ def load_states(data):
 
 
 params = {
-    'env': '../CTD3/project/env-TD3-icm_dnn-risk-acc-20230312/trajectory/trajectory.csv',
-    'policy': 'policy_trajectory.csv',
+    'env_type': EnvType.LANE_KEEPING,
+    'env': '../CTD3/project/env-TD3_risk-rnd-lane_keeping-20230318/trajectory/trajectory.csv',
+    'policy': '../CTD3/project/policy-TD3_risk-rnd-lane_keeping-20230318/trajectory/policy_trajectory.csv',
+    'prism_path': 'C:/Program Files/prism-4.7/bin'
 }
 
 
 def load_data(filename):
-    data = read_csv(filename)
+    data = read_csv(filename, params['env_type'])
     states = load_states(data)
     return data, states
 
@@ -106,7 +112,7 @@ def set_label(data, model, K, cluster_type, type):
                 data[i].state.tag = model.labels_[label_index] + 1
                 label_index += 1
             else:
-                data[i].state.tag = _predict(model, [data[i].state.to_list()], cluster_type)[0] + 1
+                data[i].state.tag = _predict(model, np.array([data[i].state.to_list()], dtype='float32'), cluster_type)[0] + 1
 
 
 def draw_graph(graph, K):
@@ -240,7 +246,7 @@ def check_steady(data, K, slide_window=5):
             tags.pop(0)
     return steady / total_n
 
-
+# TODO 作为 try_K 参数
 # 用于存储模型，避免重复计算
 model_memo = {}  # (K, cluster_type) -> {model, graph, times} times为被使用的次数，达到 epoch 时清除
 
@@ -296,6 +302,7 @@ def try_K(epochs, current_epoch, K_min, K_max, data, states, action_spliter, dat
         # global model_memo
         for K in range(K_min, K_max):
             print(f"Processing epoch {current_epoch}, K {K}")
+            # TODO 移到循环外？
             model_read_write_lock = threading.Lock()
             with model_read_write_lock:
                 model, graph = get_model_and_graph(epochs=epochs, K=K, data=data, states=states,
@@ -567,50 +574,225 @@ def get_action_range(env_data, policy_data):
     return res
 
 
+def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_code=False, filename='code.prism'):
+    env_graph = Graph(env_data, K, action_spliter=action_spliter)
+    env_graph.gen_nodes()
+    env_graph.gen_edges()
+
+    policy_graph = Graph(policy_data, K, action_spliter=action_spliter)
+    policy_graph.gen_nodes()
+    policy_graph.gen_edges()
+
+    _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
+    retry = 0
+    while retry < 10:
+        try:
+            code = _parser.parse(save=save_code, filename=filename)
+            # print(code)
+            break
+        except PermissionError:
+            print('PermissionError')
+            sleep(2)
+            retry += 1
+            continue
+
+
+def execute_prism_code(prism_file_path):
+    project_dir = os.getcwd()
+    os.chdir(params['prism_path'])
+    # print(os.getcwd())
+    process = subprocess.Popen(['prism.bat', os.path.join('D:/University/project/StateAbstract', prism_file_path), 'D:/University/project/StateAbstract/props.props', '-prop', '1'], stdout=subprocess.PIPE)
+
+    output, error = process.communicate()
+    output = output.decode('utf-8')
+
+    process.terminate()
+    os.chdir(project_dir)
+    return output, error
+
+
+def get_info_from_output(output):
+    try:
+        type_str = re.findall(r'Type:\s+(.*)', output)[0]
+        states_str = re.findall(r'States:\s+(\d+)', output)[0]
+        transitions_str = re.findall(r'Transitions:\s+(.*)', output)[0]
+        choices_str = re.findall(r'Choices:\s+(.*)', output)[0]
+        result_str = re.findall(r'Result:\s+(\d+\.\d+)', output)[0]
+    except IndexError:
+        print(output)
+        return {
+            'result': 0
+        }
+
+    type_str = type_str.strip()
+    states_val = int(re.sub(r'\D+', '', states_str))
+    transitions_val = int(re.sub(r'\D', '', transitions_str))
+    choices_val = int(re.sub(r'\D', '', choices_str))
+    result_val = float(result_str)
+
+    return {
+        'type': type_str,
+        'states': states_val,
+        'transitions': transitions_val,
+        'choices': choices_val,
+        'result': result_val
+    }
+
+
+def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(5, 40), granularity_range=None, parallel=False):
+    if granularity_range is None:
+        granularity_range = {'acc': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5], 'steer': [0.01, 0.02, 0.05, 0.1]}
+
+    raw_action_range = get_action_range(env_data, policy_data)
+
+    cluster_type = 'birch'
+
+    # TODO 线程不安全
+    if parallel:
+        record_lock = threading.Lock()
+        record = []
+
+        def run_task(env_data, policy_data, K, acc, steer, model):
+            print(f'K: {K}, acc: {acc}, steer: {steer}')
+            granularity = {'acc': acc, 'steer': steer}
+            action_spliter = ActionSpliter(action_ranges=raw_action_range, granularity=granularity)
+            set_label(env_data, model, K, cluster_type, 'env')
+            set_label(policy_data, model, K, cluster_type, 'policy')
+            parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+                                 model=model, action_spliter=action_spliter,
+                                 save_code=True, filename=f'tmp/code_{K}_{acc}_{steer}.prism')
+            # 执行 PRISM 代码
+            output, error = execute_prism_code(prism_file_path=f'tmp/code_{K}_{acc}_{steer}.prism')
+            # 从 output 中获取 result
+            output_info = get_info_from_output(output)
+            with record_lock:
+                record.append((K, acc, steer, output_info['result']))
+
+        def worker(task_queue, model_cache, env_data, env_states, policy_data, policy_states):
+            while True:
+                K, acc, steer = task_queue.get()
+
+                if K in model_cache:
+                    model = model_cache[K]
+                else:
+                    model = _cluster(K, env_states, cluster_type)
+                    model_cache[K] = model
+                run_task(env_data, policy_data, K, acc, steer, model)
+                task_queue.task_done()
+
+        def start_workers(num_workers, task_queue, model_cache, env_data, env_states, policy_data, policy_states):
+            for i in range(num_workers):
+                t = threading.Thread(target=worker, args=(task_queue, model_cache, env_data, env_states, policy_data, policy_states))
+                t.daemon = True
+                t.start()
+
+        def add_tasks(K_range, granularity_range):
+            task_queue = queue.Queue()
+            for K in range(K_range[0], K_range[1]):
+                for acc in granularity_range['acc']:
+                    for steer in granularity_range['steer']:
+                        task_queue.put((K, acc, steer))
+            return task_queue
+
+        task_queue = add_tasks(K_range, granularity_range)
+        model_cache = {}
+
+        num_workers = 20
+        start_workers(num_workers, task_queue, model_cache,
+                      copy.deepcopy(env_data),
+                      copy.deepcopy(env_states),
+                      copy.deepcopy(policy_data),
+                      copy.deepcopy(policy_states))
+
+        task_queue.join()
+    else:
+        record = []
+        # 生成 PRISM 代码
+        for K in range(K_range[0], K_range[1]):
+            model = _cluster(K, env_states, cluster_type)
+            set_label(env_data, model, K, cluster_type, 'env')
+            set_label(policy_data, model, K, cluster_type, 'policy')
+            for acc in granularity_range['acc']:
+                for steer in granularity_range['steer']:
+                    granularity = {'acc': acc, 'steer': steer}
+                    action_spliter = ActionSpliter(action_ranges=raw_action_range, granularity=granularity)
+                    parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+                                         model=model, action_spliter=action_spliter,
+                                         save_code=True, filename=f'tmp/code_{K}_{acc}_{steer}.prism')
+                    # 执行 PRISM 代码
+                    output, error = execute_prism_code(prism_file_path=f'tmp/code_{K}_{acc}_{steer}.prism')
+                    # 从 output 中获取 result
+                    output_info = get_info_from_output(output)
+                    record.append((K, acc, steer, output_info['result']))
+
+    if len(granularity_range['acc']) == 1 and len(granularity_range['steer']) == 1:
+        record.sort(key=lambda x: x[0], reverse=True)
+        K, acc, steer, reward = zip(*record)
+        # 创建 2D 图像
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+
+        ax.plot(K, reward)
+        for x, y in zip(K, reward):
+            ax.text(x, y, f'{y:.3f}')
+        ax.set_xlabel('K')
+        ax.set_ylabel('reward')
+        plt.title('Two-dimensional plot')
+        plt.show()
+    else:
+        K, acc, steer, reward = zip(*record)
+        # 创建3D图形
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        # 使用颜色编码表示第四个变量
+        sc = ax.scatter(acc, steer, K, c=reward, cmap='viridis')
+        plt.colorbar(sc)
+
+        ax.set_xlabel('acc')
+        ax.set_ylabel('steer')
+        ax.set_zlabel('K')
+        plt.title('Four-dimensional plot')
+
+        plt.show()
+
+
 if __name__ == '__main__':
     # test K
-    env_data, env_states = load_data(params['env'])
+    # env_data, env_states = load_data(params['env'])
 
     # 验证原始数据有稳定性
-    raw_steady = check_raw_data_steady(env_data, 5)
+    # raw_steady = check_raw_data_steady(env_data, 5)
     # 验证打乱后的数据没有稳定性
-    _data = shuffle_raw_data(env_data)
-    random_steady = check_raw_data_steady(_data, 5)
-    print(f'random_steady: {random_steady}')
-    print(f'raw_steady: {raw_steady}')
+    # _data = shuffle_raw_data(env_data)
+    # random_steady = check_raw_data_steady(_data, 5)
+    # print(f'random_steady: {random_steady}')
+    # print(f'raw_steady: {raw_steady}')
 
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.1})
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
     # 对比聚类算法
-    # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 30), epochs=5, parallel=True)
+    # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
     #
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(4, 24), calc_type=0b1111,
-    #             slide_window=4, epochs=1, parallel=True)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(6, 13), calc_type=0b1111,
+    #             slide_window=3, epochs=1, parallel=True)
 
     # 可视化聚类结果
-    # model = _cluster(10, env_states, cluster_type='birch')
+    # model = _cluster(30, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
-    # K = 10
-    # cluster_type = 'birch'
     # env_data, env_states = load_data(params['env'])
     # policy_data, policy_states = load_data(params['policy'])
-    #
-    # model = _cluster(K, env_states, cluster_type)
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data), granularity={'acc': 0.01})
-    # set_label(env_data, model, K, cluster_type, 'env')
-    # env_graph = Graph(env_data, K, action_spliter=action_spliter)
-    # env_graph.gen_nodes()
-    # env_graph.gen_edges()
-    #
-    # set_label(policy_data, model, K, cluster_type, 'policy')
-    # policy_graph = Graph(policy_data, K, action_spliter=action_spliter)
-    # policy_graph.gen_nodes()
-    # policy_graph.gen_edges()
-    #
-    # _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
-    # code = _parser.parse(save=True)
-    # print(code)
+    # parse_code_from_data(K=12, granularity={'acc': 0.1, 'steer': 0.01}, env_data=env_data, env_states=env_states,
+    #                      policy_data=policy_data, policy_states=policy_states, save_code=True)
+    # output, error = execute_prism_code()
+    # result = get_info_from_output(output)
+    # print(result)
+
+    env_data, env_states = load_data(params['env'])
+    policy_data, policy_states = load_data(params['policy'])
+    # prism_experiment(K_range=(10, 15), granularity_range={'acc': [0.01, 0.02], 'steer': [0.01, 0.02]}, parallel=False)
+    prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(5, 15), granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)

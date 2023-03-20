@@ -1,4 +1,4 @@
-import json
+import enum
 
 import numpy as np
 import pandas as pd
@@ -6,7 +6,7 @@ import pandas as pd
 import utils
 
 
-def read_csv(filename):
+def read_csv(filename, env_type):
     data_csv = pd.read_csv(filename)
 
     # data_csv = utils.delete_out_three_sigma(data_csv)
@@ -14,7 +14,7 @@ def read_csv(filename):
 
     data = []
     for i in data_csv.index:
-        trajectory = Trajectory()
+        trajectory = Trajectory(env_type)
         # print(data_csv.loc[i].values[0:-1])
         trajectory.load(data_csv.loc[i])
         # print(state.__repr__())
@@ -140,7 +140,7 @@ class State(Base):
         self.state_type = None
         self.tag = None
         self.readonly = ['cluster_exclude', 'readonly', 'state_type', 'tag']
-        self.cluster_exclude = ['reward']
+        self.cluster_exclude = ['reward', 'is_crash', 'is_outoflane']
         self.cluster_exclude.extend(self.readonly)
 
     def load(self, **kwargs):
@@ -170,6 +170,7 @@ class ActionSpliter:
     def __init__(self, action_ranges, granularity):
         self.action_ranges = action_ranges
         self.granularity = granularity
+        self._action_set = set()
 
         for key, value in self.action_ranges.items():
             self.action_ranges[key] = utils.expand_action_range(self.action_ranges[key], self.granularity[key])
@@ -191,24 +192,38 @@ class ActionSpliter:
             if key in action.readonly:
                 continue
             width = int((self.action_ranges[key][1] - self.action_ranges[key][0]) // self.granularity[key])
-            offset = int(abs(self.action_ranges[key][0]) // self.granularity[key])
-            tmp = int(value // self.granularity[key])
-            if tmp == self.action_ranges[key][1]:
+
+            # offset = int(abs(self.action_ranges[key][0]) // self.granularity[key])
+            tmp = int((value - self.action_ranges[key][0]) // self.granularity[key])
+            if value == self.action_ranges[key][1]:
                 tmp -= 1
-            res += (tmp + offset) * size
+            # res += (tmp + offset) * size
+            res += tmp * size
             size *= width
+
+        # self._action_set.add(res)
+        # print(len(self._action_set)/size)
         # print(f'id: {res}')
         return res
 
 
+class EnvType(enum.Enum):
+    ACC = 0
+    LANE_KEEPING = 1
+
 class Trajectory:
-    def __init__(self):
+    def __init__(self, env_type):
+        self.env_type = env_type
         self.state = State()
         self.action = Action()
 
     def load(self, data):
-        self.state.load(**data.iloc[0:2], **data.iloc[3:4])
-        self.action.load(**data.iloc[2:3])
+        if self.env_type is EnvType.ACC:
+            self.state.load(**data.iloc[0:2], **data.iloc[3:4])
+            self.action.load(**data.iloc[2:3])
+        elif self.env_type is EnvType.LANE_KEEPING:
+            self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[10:11])
+            self.action.load(**data.iloc[6:7])
 
 
 class Node:

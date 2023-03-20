@@ -1,3 +1,5 @@
+import os
+
 
 class PrismParser:
     def __init__(self, K, env_graph, policy_graph):
@@ -90,7 +92,9 @@ global sched: [0..1] init 0;
 
         code = f'''
 module Env
-state : [0..{self.node_num - 1}] init 0;
+state : [0..{self.node_num}] init 0;
+is_crash : [0..1] init 0;
+is_outoflane : [0..1] init 0;
 
 [] (action={self.special_action_id}) & (sched=1) -> 1 : (sched\'=0);
 {t}
@@ -111,7 +115,7 @@ endmodule
         code = f'''
 
 module Policy
-action: [0..{self.env_graph.action_spliter.action_len}];
+action: [0..{self.env_graph.action_spliter.action_len + 1}];
 
 {t}
 endmodule
@@ -125,6 +129,29 @@ endrewards
     def parse(self, save=False, filename='code.prism'):
         code = f'{self.declaration()}\n{self.parse_policy()}\n{self.parse_env()}'
         if save:
-            with open(filename, 'w') as f:
-                f.write(code)
+            print('save code to', filename)
+            if not os.path.exists(os.path.dirname(filename)):
+                os.mkdir(os.path.dirname(filename))
+            try:
+                with open(filename, 'w') as f:
+                    f.write(code)
+            except FileNotFoundError:
+                print('file not found')
+        # self.properties()
         return code
+
+    def properties(self):
+        # print('is_crash:')
+        # for tag in self.env_graph.nodes:
+        #     if tag == 0 or tag == self.node_num - 1:
+        #         continue
+        #     node = self.env_graph.nodes[tag]
+        #     if node.state.is_crash != 0:
+        #         print(node.state.tag, node.state.is_crash)
+        print('is_outoflane:')
+        for tag in self.env_graph.nodes:
+            if tag == 0 or tag == self.node_num - 1:
+                continue
+            node = self.env_graph.nodes[tag]
+            if node.state.is_outoflane != 0:
+                print(node.state.tag, node.state.is_outoflane)
