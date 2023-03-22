@@ -1,8 +1,8 @@
 import copy
 import os
-import pickle
 import queue
 import re
+import subprocess
 import threading
 from time import sleep
 
@@ -14,11 +14,8 @@ import pandas as pd
 import seaborn as sns
 import sklearn
 import sklearn.cluster as cluster
-from scipy.interpolate import griddata
 from sklearn.utils import Bunch
-import subprocess
 
-import force_directed_layout
 import prism_parser
 import utils
 from State import Graph, read_csv, ActionSpliter, EnvType
@@ -48,9 +45,9 @@ def load_states(data):
 
 
 params = {
-    'env_type': EnvType.LANE_KEEPING,
-    'env': '../CTD3/project/env-TD3_risk-rnd-lane_keeping-20230318/trajectory/trajectory.csv',
-    'policy': '../CTD3/project/policy-TD3_risk-rnd-lane_keeping-20230318/trajectory/policy_trajectory.csv',
+    'env_type': EnvType.ACC,
+    'env': '../CTD3/project/env-TD3_risk-rnd-acc-20230322/trajectory/trajectory.csv',
+    'policy': '../CTD3/project/policy-TD3_risk-acc-20230322/trajectory/policy_trajectory.csv',
     'prism_path': 'C:/Program Files/prism-4.7/bin'
 }
 
@@ -112,7 +109,8 @@ def set_label(data, model, K, cluster_type, type):
                 data[i].state.tag = model.labels_[label_index] + 1
                 label_index += 1
             else:
-                data[i].state.tag = _predict(model, np.array([data[i].state.to_list()], dtype='float32'), cluster_type)[0] + 1
+                data[i].state.tag = _predict(model, np.array([data[i].state.to_list()], dtype='float32'), cluster_type)[
+                                        0] + 1
 
 
 def draw_graph(graph, K):
@@ -245,6 +243,7 @@ def check_steady(data, K, slide_window=5):
             total_n += 1
             tags.pop(0)
     return steady / total_n
+
 
 # TODO 作为 try_K 参数
 # 用于存储模型，避免重复计算
@@ -403,7 +402,7 @@ def monte_carlo(data, states, action_spliter, data_type='env', cluster_type='bir
                     matx_st[i, :] = st_scores
 
         # 创建n个线程并运行
-        n_threads = epochs
+        n_threads = 8
         threads = []
         for i in range(n_threads):
             t = threading.Thread(target=worker)
@@ -453,17 +452,21 @@ def monte_carlo(data, states, action_spliter, data_type='env', cluster_type='bir
     mean_st = None
     if calc_type & 0b1000:
         mean_sse = matx_sse.sum(axis=0) / epochs
+        np.save('sse.npy', mean_sse)
         ax1.plot(X, mean_sse.tolist()[0], marker='o', label='SSE')
     if calc_type & 0b0100:
         mean_sc = matx_sc.sum(axis=0) / epochs
+        np.save('silhouette.npy', mean_sc)
         ax2.plot(X, mean_sc.tolist()[0], 'r', marker='*', label='Silhouette')
     if calc_type & 0b0010:
         mean_ch = matx_ch.sum(axis=0) / epochs
         mean_ch_norm = mean_ch / max(mean_ch.tolist()[0]) / 3
+        np.save('calinski_harabasz.npy', mean_ch)
         ax2.plot(X, mean_ch_norm.tolist()[0], 'g', marker='*', label='Calinski Harabasz')
     if calc_type & 0b0001:
         mean_st = matx_st.sum(axis=0) / epochs
         # print(mean_st)
+        np.save('steady.npy', mean_st)
         ax3.plot(X, mean_st.tolist()[0], 'b', marker='o', label='Steady')
 
     if calc_type & 0b1000:
@@ -591,9 +594,9 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_c
             # print(code)
             break
         except PermissionError:
-            print('PermissionError')
-            sleep(2)
             retry += 1
+            print(f'PermissionError. retry {retry}')
+            sleep(2)
             continue
 
 
@@ -601,7 +604,9 @@ def execute_prism_code(prism_file_path):
     project_dir = os.getcwd()
     os.chdir(params['prism_path'])
     # print(os.getcwd())
-    process = subprocess.Popen(['prism.bat', os.path.join('D:/University/project/StateAbstract', prism_file_path), 'D:/University/project/StateAbstract/props.props', '-prop', '1'], stdout=subprocess.PIPE)
+    process = subprocess.Popen(['prism.bat', os.path.join('D:/University/project/StateAbstract', prism_file_path),
+                                'D:/University/project/StateAbstract/props.props', '-prop', '1'],
+                               stdout=subprocess.PIPE)
 
     output, error = process.communicate()
     output = output.decode('utf-8')
@@ -639,7 +644,8 @@ def get_info_from_output(output):
     }
 
 
-def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(5, 40), granularity_range=None, parallel=False):
+def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(5, 40),
+                     granularity_range=None, parallel=False):
     if granularity_range is None:
         granularity_range = {'acc': [0.01, 0.02, 0.05, 0.1, 0.2, 0.5], 'steer': [0.01, 0.02, 0.05, 0.1]}
 
@@ -682,7 +688,11 @@ def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(
 
         def start_workers(num_workers, task_queue, model_cache, env_data, env_states, policy_data, policy_states):
             for i in range(num_workers):
-                t = threading.Thread(target=worker, args=(task_queue, model_cache, env_data, env_states, policy_data, policy_states))
+                t = threading.Thread(target=worker, args=(task_queue, model_cache,
+                                                          copy.deepcopy(env_data),
+                                                          copy.deepcopy(env_states),
+                                                          copy.deepcopy(policy_data),
+                                                          copy.deepcopy(policy_states)))
                 t.daemon = True
                 t.start()
 
@@ -698,11 +708,7 @@ def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(
         model_cache = {}
 
         num_workers = 20
-        start_workers(num_workers, task_queue, model_cache,
-                      copy.deepcopy(env_data),
-                      copy.deepcopy(env_states),
-                      copy.deepcopy(policy_data),
-                      copy.deepcopy(policy_states))
+        start_workers(num_workers, task_queue, model_cache, env_data, env_states, policy_data, policy_states)
 
         task_queue.join()
     else:
@@ -727,34 +733,42 @@ def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(
 
     if len(granularity_range['acc']) == 1 and len(granularity_range['steer']) == 1:
         record.sort(key=lambda x: x[0], reverse=True)
+        np.save('record.npy', record)
         K, acc, steer, reward = zip(*record)
+        print(f'K: {K}')
+        print(f'reward: {reward}')
         # 创建 2D 图像
-        fig = plt.figure()
-        ax = fig.add_subplot(111)
-
-        ax.plot(K, reward)
-        for x, y in zip(K, reward):
-            ax.text(x, y, f'{y:.3f}')
-        ax.set_xlabel('K')
-        ax.set_ylabel('reward')
-        plt.title('Two-dimensional plot')
-        plt.show()
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111)
+        #
+        # ax.plot(K, reward)
+        # for x, y in zip(K, reward):
+        #     ax.text(x, y, f'{y:.2f}')
+        # plt.axhline(y=episode_reward, linestyle='--')
+        # ax.text(0, episode_reward, f'{episode_reward:.2f}')
+        # ax.set_xlabel('K')
+        # ax.set_ylabel('reward')
+        # plt.title('Episode Reward')
+        # fig.savefig(f'plot_Episode Reward.png')
     else:
+        np.save('record.npy', record)
         K, acc, steer, reward = zip(*record)
+        print(f'K: {K}')
+        print(f'reward: {reward}')
         # 创建3D图形
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-
-        # 使用颜色编码表示第四个变量
-        sc = ax.scatter(acc, steer, K, c=reward, cmap='viridis')
-        plt.colorbar(sc)
-
-        ax.set_xlabel('acc')
-        ax.set_ylabel('steer')
-        ax.set_zlabel('K')
-        plt.title('Four-dimensional plot')
-
-        plt.show()
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')
+        #
+        # # 使用颜色编码表示第四个变量
+        # sc = ax.scatter(acc, steer, K, c=reward, cmap='viridis')
+        # plt.colorbar(sc)
+        #
+        # ax.set_xlabel('acc')
+        # ax.set_ylabel('steer')
+        # ax.set_zlabel('K')
+        # plt.title('Four-dimensional plot')
+        #
+        # plt.show()
 
 
 if __name__ == '__main__':
@@ -774,8 +788,8 @@ if __name__ == '__main__':
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
     #
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(6, 13), calc_type=0b1111,
-    #             slide_window=3, epochs=1, parallel=True)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 48), calc_type=0b1111,
+    #             slide_window=4, epochs=20, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(30, env_states, cluster_type='birch')
@@ -791,8 +805,12 @@ if __name__ == '__main__':
 
     env_data, env_states = load_data(params['env'])
     policy_data, policy_states = load_data(params['policy'])
+    # avg_step, avg_episode_reward, p_crash, p_outoflane = utils.get_info_from_policy_data(policy_data)
+    # print(
+    #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}')
     # prism_experiment(K_range=(10, 15), granularity_range={'acc': [0.01, 0.02], 'steer': [0.01, 0.02]}, parallel=False)
-    prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(5, 15), granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
+    prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(10, 48),
+                     granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)

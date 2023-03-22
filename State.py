@@ -48,7 +48,9 @@ class Base:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+        # 不参与运算
         self.readonly = ['cluster_exclude', 'readonly']
+        # 不参与聚类
         self.cluster_exclude = []
         self.cluster_exclude.extend(self.readonly)
 
@@ -181,7 +183,7 @@ class ActionSpliter:
     def action_len(self):
         size = 1
         for key, value in self.action_ranges.items():
-            width = int((value[1] - value[0]) // self.granularity[key])
+            width = int((value[1] - value[0]) / self.granularity[key])
             size *= width
         return size
 
@@ -191,10 +193,10 @@ class ActionSpliter:
         for key, value in vars(action).items():
             if key in action.readonly:
                 continue
-            width = int((self.action_ranges[key][1] - self.action_ranges[key][0]) // self.granularity[key])
+            width = int((self.action_ranges[key][1] - self.action_ranges[key][0]) / self.granularity[key])
 
             # offset = int(abs(self.action_ranges[key][0]) // self.granularity[key])
-            tmp = int((value - self.action_ranges[key][0]) // self.granularity[key])
+            tmp = int((value - self.action_ranges[key][0]) / self.granularity[key])
             if value == self.action_ranges[key][1]:
                 tmp -= 1
             # res += (tmp + offset) * size
@@ -210,6 +212,8 @@ class ActionSpliter:
 class EnvType(enum.Enum):
     ACC = 0
     LANE_KEEPING = 1
+    RACE_TRACK = 2
+
 
 class Trajectory:
     def __init__(self, env_type):
@@ -219,11 +223,14 @@ class Trajectory:
 
     def load(self, data):
         if self.env_type is EnvType.ACC:
-            self.state.load(**data.iloc[0:2], **data.iloc[3:4])
-            self.action.load(**data.iloc[2:3])
+            self.state.load(**data.iloc[0:2], **data.iloc[4:5], **data.iloc[6:8])
+            self.action.load(**data.iloc[2:4])
         elif self.env_type is EnvType.LANE_KEEPING:
-            self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[10:11])
+            self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[9:11])
             self.action.load(**data.iloc[6:7])
+        elif self.env_type is EnvType.RACE_TRACK:
+            self.state.load(**data.iloc[0:32], **data.iloc[34:35], **data.iloc[36:38])
+            self.action.load(**data.iloc[32:34])
 
 
 class Node:

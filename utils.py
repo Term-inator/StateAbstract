@@ -119,6 +119,10 @@ def calc_count_opt(K, n, m):
 
 
 def opt_correct_prove():
+    """
+    证明计算方式正确
+    :return:
+    """
     init_memo(40, 40, 40)
     for K in range(2, 40):
         for n in range(2, min(K+1, 15)):
@@ -135,6 +139,10 @@ def opt_correct_prove():
 
 
 def delta():
+    """
+    比较两种计算方式的差值
+    :return:
+    """
     init_memo(60, 60, 60)
     for K in range(2, 60):
         for n in range(2, min(K+1, 15)):
@@ -241,5 +249,44 @@ def nearest_multiple(original_value, divisor, round_type='round'):
 
 
 def expand_action_range(action_range, granularity):
+    """
+    根据 granularity 扩展 action_range 为 granularity 的整数倍
+    :param action_range:
+    :param granularity:
+    :return:
+    """
     return nearest_multiple(action_range[0], granularity, round_type='floor'), \
         nearest_multiple(action_range[1], granularity, round_type='ceil')
+
+
+def get_info_from_policy_data(policy_data):
+    """
+    计算每个 episode 的平均步数和平均累计奖励
+    :param policy_data:
+    :return:
+    """
+    episode = 0
+    steps = 0
+    num_crash = 0
+    num_outoflane = 0
+    episode_rewards = 0
+    for i in range(len(policy_data)):
+        if policy_data[i].state.state_type == 0:
+            episode += 1
+        elif policy_data[i].state.state_type == 1:
+            pass
+        else:
+            steps += 1
+            episode_rewards += policy_data[i].state.reward
+            num_crash += policy_data[i].state.is_crash
+            num_outoflane += policy_data[i].state.is_outoflane
+
+    avg_step = steps / episode
+    avg_episode_reward = episode_rewards / episode
+    p_crash = num_crash / steps
+    p_outoflane = num_outoflane / steps
+
+    return avg_step, avg_episode_reward, p_crash, p_outoflane
+
+
+
