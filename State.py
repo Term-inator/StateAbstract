@@ -109,7 +109,10 @@ class Base:
         for key, value in vars(self).items():
             if key in self.cluster_exclude:
                 continue
-            res.append(value)
+            if type(value) == np.ndarray:
+                res.extend(value)
+            else:
+                res.append(value)
         return res
 
     def from_list(self, lst):
@@ -150,8 +153,12 @@ class State(Base):
         all_one = True
         for key, value in kwargs.items():
             setattr(self, key, value)
-            all_zero &= (value == 0)
-            all_one &= (value == 1)
+            if type(value) == np.ndarray:
+                all_zero &= (value == 0).all()
+                all_one &= (value == 1).all()
+            else:
+                all_zero &= (value == 0)
+                all_one &= (value == 1)
 
         if all_zero:
             self.state_type = 0
@@ -229,8 +236,14 @@ class Trajectory:
             self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[9:11])
             self.action.load(**data.iloc[6:7])
         elif self.env_type is EnvType.RACE_TRACK:
-            self.state.load(**data.iloc[0:32], **data.iloc[34:35], **data.iloc[36:38])
-            self.action.load(**data.iloc[32:34])
+            state = data.iloc[144:288]
+            action = data.iloc[288:290]
+            reward = data.iloc[290:291]
+            info = data.iloc[292:294]
+            # to numpy
+            state = state.to_numpy()
+            self.state.load(on_road=state, **reward, **info)
+            self.action.load(**action)
 
 
 class Node:

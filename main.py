@@ -1,9 +1,11 @@
 import copy
+import datetime
 import os
 import queue
 import re
 import subprocess
 import threading
+import time
 from time import sleep
 
 import matplotlib
@@ -45,9 +47,9 @@ def load_states(data):
 
 
 params = {
-    'env_type': EnvType.ACC,
-    'env': '../CTD3/project/env-TD3_risk-rnd-acc-20230322/trajectory/trajectory.csv',
-    'policy': '../CTD3/project/policy-TD3_risk-acc-20230322/trajectory/policy_trajectory.csv',
+    'env_type': EnvType.RACE_TRACK,
+    'env': '../CTD3/project/env-TD3_risk-rnd-racetrack-20230322/trajectory/trajectory.csv',
+    'policy': '../CTD3/project/policy-TD3_risk-racetrack-20230320/trajectory/policy_trajectory.csv',
     'prism_path': 'C:/Program Files/prism-4.7/bin'
 }
 
@@ -74,7 +76,7 @@ def _cluster(K, states, cluster_type):
     elif cluster_type == 'agglomerative':
         model = cluster.AgglomerativeClustering(n_clusters=K)
     elif cluster_type == 'birch':
-        model = cluster.Birch(n_clusters=K, threshold=0.1, compute_labels=True)
+        model = cluster.Birch(n_clusters=K, threshold=0.5, compute_labels=True)
     else:
         raise Exception('cluster type error')
     model.fit(states.data)
@@ -772,8 +774,10 @@ def prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(
 
 
 if __name__ == '__main__':
+    start_time = time.time()
+    print(f'start_time: {datetime.datetime.now()}')
     # test K
-    # env_data, env_states = load_data(params['env'])
+    env_data, env_states = load_data(params['env'])
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -783,13 +787,13 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
     #
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 48), calc_type=0b1111,
-    #             slide_window=4, epochs=20, parallel=False)
+    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 50), calc_type=0b1111,
+                slide_window=4, epochs=1, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(30, env_states, cluster_type='birch')
@@ -803,18 +807,21 @@ if __name__ == '__main__':
     # result = get_info_from_output(output)
     # print(result)
 
-    env_data, env_states = load_data(params['env'])
-    policy_data, policy_states = load_data(params['policy'])
+    # env_data, env_states = load_data(params['env'])
+    # policy_data, policy_states = load_data(params['policy'])
     # avg_step, avg_episode_reward, p_crash, p_outoflane = utils.get_info_from_policy_data(policy_data)
     # print(
     #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}')
     # prism_experiment(K_range=(10, 15), granularity_range={'acc': [0.01, 0.02], 'steer': [0.01, 0.02]}, parallel=False)
-    prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(10, 48),
-                     granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
+    # prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(10, 15),
+    #                  granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)
     # _parser = uppaal_parser.UppaalParser(graph)
     # xml_tree = _parser.to_xml()
     # uppaal_parser.write(xml_tree, 'uppaal')
+    end_time = time.time()
+    print(f'end_time: {datetime.datetime.now()})')
+    print(f'cost time: {end_time - start_time}s')
     pass
