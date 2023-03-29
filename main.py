@@ -46,16 +46,12 @@ def load_states(data):
     )
 
 
-params = {
-    'env_type': EnvType.RACE_TRACK,
-    'env': '../CTD3/project/env-TD3_risk-rnd-racetrack-20230322/trajectory/trajectory.csv',
-    'policy': '../CTD3/project/policy-TD3_risk-racetrack-20230320/trajectory/policy_trajectory.csv',
-    'prism_path': 'C:/Program Files/prism-4.7/bin'
-}
+config = utils.load_yml('./configs/acc.yaml')
+prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
 def load_data(filename):
-    data = read_csv(filename, params['env_type'])
+    data = read_csv(filename, EnvType(config['data']['env_type']))
     states = load_states(data)
     return data, states
 
@@ -76,7 +72,7 @@ def _cluster(K, states, cluster_type):
     elif cluster_type == 'agglomerative':
         model = cluster.AgglomerativeClustering(n_clusters=K)
     elif cluster_type == 'birch':
-        model = cluster.Birch(n_clusters=K, threshold=0.5, compute_labels=True)
+        model = cluster.Birch(n_clusters=K, threshold=config['cluster']['threshold'], compute_labels=True)
     else:
         raise Exception('cluster type error')
     model.fit(states.data)
@@ -454,21 +450,22 @@ def monte_carlo(data, states, action_spliter, data_type='env', cluster_type='bir
     mean_st = None
     if calc_type & 0b1000:
         mean_sse = matx_sse.sum(axis=0) / epochs
-        np.save('sse.npy', mean_sse)
+        np.save('sse.npy', np.asarray(np.vstack((X, mean_sse)).T))
         ax1.plot(X, mean_sse.tolist()[0], marker='o', label='SSE')
     if calc_type & 0b0100:
         mean_sc = matx_sc.sum(axis=0) / epochs
-        np.save('silhouette.npy', mean_sc)
+        np.save('silhouette.npy', np.asarray(np.vstack((X, mean_sc)).T))
         ax2.plot(X, mean_sc.tolist()[0], 'r', marker='*', label='Silhouette')
     if calc_type & 0b0010:
         mean_ch = matx_ch.sum(axis=0) / epochs
         mean_ch_norm = mean_ch / max(mean_ch.tolist()[0]) / 3
-        np.save('calinski_harabasz.npy', mean_ch)
+        np.save('calinski_harabasz.npy', np.asarray(np.vstack((X, mean_ch_norm)).T))
         ax2.plot(X, mean_ch_norm.tolist()[0], 'g', marker='*', label='Calinski Harabasz')
     if calc_type & 0b0001:
         mean_st = matx_st.sum(axis=0) / epochs
         # print(mean_st)
-        np.save('steady.npy', mean_st)
+        # print(np.asarray(np.vstack((X, mean_st)).T).shape)
+        np.save('steady.npy', np.asarray(np.vstack((X, mean_st)).T))
         ax3.plot(X, mean_st.tolist()[0], 'b', marker='o', label='Steady')
 
     if calc_type & 0b1000:
@@ -579,7 +576,7 @@ def get_action_range(env_data, policy_data):
     return res
 
 
-def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_code=False, filename='code.prism'):
+def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_code=False, filename='./code.prism'):
     env_graph = Graph(env_data, K, action_spliter=action_spliter)
     env_graph.gen_nodes()
     env_graph.gen_edges()
@@ -604,7 +601,7 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_c
 
 def execute_prism_code(prism_file_path):
     project_dir = os.getcwd()
-    os.chdir(params['prism_path'])
+    os.chdir(prism_path)
     # print(os.getcwd())
     process = subprocess.Popen(['prism.bat', os.path.join('D:/University/project/StateAbstract', prism_file_path),
                                 'D:/University/project/StateAbstract/props.props', '-prop', '1'],
@@ -777,7 +774,7 @@ if __name__ == '__main__':
     start_time = time.time()
     print(f'start_time: {datetime.datetime.now()}')
     # test K
-    env_data, env_states = load_data(params['env'])
+    # env_data, env_states = load_data(params['env'])
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -787,33 +784,41 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
-    #
+
     # 求 K 的最佳值
-    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 50), calc_type=0b1111,
-                slide_window=4, epochs=1, parallel=False)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(2, 13), calc_type=0b1111,
+    #             slide_window=3, epochs=10, parallel=False)
 
     # 可视化聚类结果
-    # model = _cluster(30, env_states, cluster_type='birch')
+    # model = _cluster(45, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
-    # env_data, env_states = load_data(params['env'])
-    # policy_data, policy_states = load_data(params['policy'])
-    # parse_code_from_data(K=12, granularity={'acc': 0.1, 'steer': 0.01}, env_data=env_data, env_states=env_states,
-    #                      policy_data=policy_data, policy_states=policy_states, save_code=True)
-    # output, error = execute_prism_code()
-    # result = get_info_from_output(output)
-    # print(result)
+    K = config['cluster']['K']
+    cluster_type = config['cluster']['type']
+    env_data, env_states = load_data(config['data']['env']['path'])
+    policy_data, policy_states = load_data(config['data']['policy']['path'])
+    model = _cluster(K, env_states, cluster_type=cluster_type)
+    set_label(env_data, model, K, cluster_type, 'env')
+    set_label(policy_data, model, K, cluster_type, 'policy')
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
+                                   granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
+    parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+                         model=model, action_spliter=action_spliter,
+                         save_code=True, filename=f'./code.prism')
+    output, error = execute_prism_code(prism_file_path=f'./code.prism')
+    result = get_info_from_output(output)
+    print(result)
 
-    # env_data, env_states = load_data(params['env'])
-    # policy_data, policy_states = load_data(params['policy'])
-    # avg_step, avg_episode_reward, p_crash, p_outoflane = utils.get_info_from_policy_data(policy_data)
+    # env_data, env_states = load_data(config['data']['env']['path'])
+    # policy_data, policy_states = load_data(config['data']['policy']['path'])
+    # avg_step, avg_episode_reward, p_crash, p_outoflane = utils.get_info_from_data(env_data)
     # print(
     #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}')
     # prism_experiment(K_range=(10, 15), granularity_range={'acc': [0.01, 0.02], 'steer': [0.01, 0.02]}, parallel=False)
-    # prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(10, 15),
+    # prism_experiment(env_data, env_states, policy_data, policy_states, K_range=(45, 46),
     #                  granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=False)
 
     # draw_graph(env_graph, K)
@@ -822,6 +827,6 @@ if __name__ == '__main__':
     # xml_tree = _parser.to_xml()
     # uppaal_parser.write(xml_tree, 'uppaal')
     end_time = time.time()
-    print(f'end_time: {datetime.datetime.now()})')
+    print(f'end_time: {datetime.datetime.now()}')
     print(f'cost time: {end_time - start_time}s')
     pass
