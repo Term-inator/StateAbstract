@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pandas as pd
 import umap
+import yaml
 from matplotlib import pyplot as plt
 from scipy.sparse import lil_matrix
 from scipy.special import gamma, factorial, comb
@@ -13,6 +14,7 @@ from sklearn.manifold import TSNE, LocallyLinearEmbedding, MDS, Isomap, Spectral
 
 def three_sigma(series):
     """
+    TODO 计划删除
     series：表示传入DataFrame的某一列。
     """
     series = series[~((series == 0) | (series == 1))]
@@ -23,6 +25,7 @@ def three_sigma(series):
 
 def delete_out_three_sigma(data):
     """
+    TODO 计划删除
     data：待检测的DataFrame
     """
     out_index = []  # 保存要删除的行索引
@@ -38,6 +41,9 @@ def delete_out_three_sigma(data):
 
 
 def delete_threshold(data, threshold=10):
+    """
+    TODO 计划删除
+    """
     zero_index = np.arange(data['x'].shape[0])[data['x'] == 0]
     one_index = np.arange(data['x'].shape[0])[data['x'] == 1]
     n = len(zero_index)
@@ -53,8 +59,18 @@ def delete_threshold(data, threshold=10):
 
 
 def normalization(data):
+    """
+    TODO 计划删除
+    """
     _range = np.max(data) - np.min(data)
     return (data - np.min(data)) / _range
+
+
+def load_yml(path):
+    """load yaml file"""
+    with open(path, 'r', encoding='utf-8') as rf:
+        config = yaml.load(rf.read(), Loader=yaml.FullLoader)
+    return config
 
 
 # 全局变量，用于记忆化搜索
@@ -259,10 +275,10 @@ def expand_action_range(action_range, granularity):
         nearest_multiple(action_range[1], granularity, round_type='ceil')
 
 
-def get_info_from_policy_data(policy_data):
+def get_info_from_data(data):
     """
     计算每个 episode 的平均步数和平均累计奖励
-    :param policy_data:
+    :param data:
     :return:
     """
     episode = 0
@@ -270,21 +286,23 @@ def get_info_from_policy_data(policy_data):
     num_crash = 0
     num_outoflane = 0
     episode_rewards = 0
-    for i in range(len(policy_data)):
-        if policy_data[i].state.state_type == 0:
+    for i in range(len(data)):
+        if data[i].state.state_type == 0:
             episode += 1
-        elif policy_data[i].state.state_type == 1:
+        elif data[i].state.state_type == 1:
             pass
         else:
             steps += 1
-            episode_rewards += policy_data[i].state.reward
-            num_crash += policy_data[i].state.is_crash
-            num_outoflane += policy_data[i].state.is_outoflane
+            episode_rewards += data[i].state.reward
+            num_crash += data[i].state.is_crash
+            num_outoflane += data[i].state.is_outoflane
 
     avg_step = steps / episode
     avg_episode_reward = episode_rewards / episode
     p_crash = num_crash / steps
     p_outoflane = num_outoflane / steps
+
+    print(f'steps: {steps}')
 
     return avg_step, avg_episode_reward, p_crash, p_outoflane
 

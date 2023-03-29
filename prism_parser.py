@@ -141,13 +141,13 @@ endrewards
         return code
 
     def properties(self):
-        # print('is_crash:')
-        # for tag in self.env_graph.nodes:
-        #     if tag == 0 or tag == self.node_num - 1:
-        #         continue
-        #     node = self.env_graph.nodes[tag]
-        #     if node.state.is_crash != 0:
-        #         print(node.state.tag, node.state.is_crash)
+        print('is_crash:')
+        for tag in self.env_graph.nodes:
+            if tag == 0 or tag == self.node_num - 1:
+                continue
+            node = self.env_graph.nodes[tag]
+            if node.state.is_crash != 0:
+                print(node.state.tag, node.state.is_crash)
         print('is_outoflane:')
         for tag in self.env_graph.nodes:
             if tag == 0 or tag == self.node_num - 1:

@@ -60,7 +60,7 @@ for npy_file in npy_files:
 
 
 data = merge_prism_experiment(files)
-np.save(os.path.join(directory, 'merged.npy'), data)
+np.save(os.path.join(directory, 'K,acc,steer,reward.npy'), data)
 K, acc, steer, reward = zip(*data)
 print(K)
 print(acc)

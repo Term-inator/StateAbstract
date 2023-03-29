@@ -217,9 +217,9 @@ class ActionSpliter:
 
 
 class EnvType(enum.Enum):
-    ACC = 0
-    LANE_KEEPING = 1
-    RACE_TRACK = 2
+    ACC = 'acc'
+    LANE_KEEPING = 'lane_keeping'
+    RACETRACK = 'racetrack'
 
 
 class Trajectory:
@@ -235,7 +235,7 @@ class Trajectory:
         elif self.env_type is EnvType.LANE_KEEPING:
             self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[9:11])
             self.action.load(**data.iloc[6:7])
-        elif self.env_type is EnvType.RACE_TRACK:
+        elif self.env_type is EnvType.RACETRACK:
             state = data.iloc[144:288]
             action = data.iloc[288:290]
             reward = data.iloc[290:291]
