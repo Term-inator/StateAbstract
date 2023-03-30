@@ -306,10 +306,11 @@ def get_info_from_data(data):
     avg_episode_reward = episode_rewards / episode
     p_crash = num_crash / steps
     p_outoflane = num_outoflane / steps
+    p_reachdest = num_reachdest / steps
 
     print(f'steps: {steps}')
 
-    return avg_step, avg_episode_reward, p_crash, p_outoflane
+    return avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest
 
 
 

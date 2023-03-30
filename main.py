@@ -1,5 +1,6 @@
 import copy
 import datetime
+import json
 import os
 import queue
 import re
@@ -20,7 +21,7 @@ from sklearn.utils import Bunch
 
 import prism_parser
 import utils
-from State import Graph, read_csv, ActionSpliter, EnvType
+from State import Graph, read_csv, ActionSpliter, EnvType, Property, EpisodeReachStateProperty
 
 matplotlib.use('TkAgg')
 
@@ -46,7 +47,7 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('./configs/intersection.yaml')
+config = utils.load_yml('./configs/acc.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
@@ -576,7 +577,7 @@ def get_action_range(env_data, policy_data):
     return res
 
 
-def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_code=False, filename='./code.prism'):
+def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save=False, filename='./code'):
     env_graph = Graph(env_data, K, action_spliter=action_spliter)
     env_graph.gen_nodes()
     env_graph.gen_edges()
@@ -589,7 +590,11 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_c
     retry = 0
     while retry < 10:
         try:
-            code = _parser.parse(save=save_code, filename=filename)
+            code = _parser.parse(save=save, file_path=f'{filename}.prism')
+            props = _parser.properties(avg_step=config['data']['policy']['avg_step'],
+                                       avg_reward=config['data']['policy']['avg_episode_reward'],
+                                       save=save, file_path=f'{filename}.props')
+            props_json = _parser.props_json(save=save, file_path=f'{filename}.json')
             # print(code)
             break
         except PermissionError:
@@ -601,12 +606,12 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save_c
         raise PermissionError
 
 
-def execute_prism_code(prism_file_path):
+def execute_prism_code(prism_file_path, props_file_path):
     project_dir = os.getcwd()
     os.chdir(prism_path)
     # print(os.getcwd())
     process = subprocess.Popen(['prism.bat', os.path.join('D:/University/project/StateAbstract', prism_file_path),
-                                'D:/University/project/StateAbstract/props.props', '-prop', '1'],
+                                os.path.join('D:/University/project/StateAbstract', props_file_path)],
                                stdout=subprocess.PIPE)
 
     output, error = process.communicate()
@@ -623,25 +628,30 @@ def get_info_from_output(output):
         states_str = re.findall(r'States:\s+(\d+)', output)[0]
         transitions_str = re.findall(r'Transitions:\s+(.*)', output)[0]
         choices_str = re.findall(r'Choices:\s+(.*)', output)[0]
-        result_str = re.findall(r'Result:\s+(\d+\.\d+)', output)[0]
+        result_str = re.findall(r'Result:\s+(\d+\.\d+)', output)
+        state_reachable_str = result_str[0: -1]
+        episode_reward_str = result_str[-1]
     except IndexError:
         print(output)
         return {
-            'result': 0
+            'state_reachable': [],
+            'episode_reward': 0
         }
 
     type_str = type_str.strip()
     states_val = int(re.sub(r'\D+', '', states_str))
     transitions_val = int(re.sub(r'\D', '', transitions_str))
     choices_val = int(re.sub(r'\D', '', choices_str))
-    result_val = float(result_str)
+    state_reachable_val = [float(s) for s in state_reachable_str]
+    episode_reward_val = float(episode_reward_str)
 
     return {
         'type': type_str,
         'states': states_val,
         'transitions': transitions_val,
         'choices': choices_val,
-        'result': result_val
+        'state_reachable': state_reachable_val,
+        'episode_reward': episode_reward_val
     }
 
 
@@ -653,11 +663,23 @@ def execute_prism_codes(prism_file_paths, parallel=False):
 
         def run_task(K, acc, steer):
             # 执行 PRISM 代码
-            output, error = execute_prism_code(prism_file_path=f'tmp/code_{K}_{acc}_{steer}.prism')
+            output, error = execute_prism_code(prism_file_path=f'tmp/code_{K}_{acc}_{steer}.prism',
+                                               props_file_path=f'tmp/code_{K}_{acc}_{steer}.props')
+
             # 从 output 中获取 result
             output_info = get_info_from_output(output)
             with record_lock:
-                record.append((K, acc, steer, output_info['result']))
+                record.append((K, acc, steer, output_info['episode_reward']))
+
+            with open(os.path.join('D:/University/project/StateAbstract', f'tmp/code_{K}_{acc}_{steer}.json'), 'r') as f:
+                props_json = json.load(f)
+
+            for prop_type in props_json:
+                event_total_prob = 0.
+                for state_tag, event_prob in props_json[prop_type]:
+                    index = state_tag - 1  # 偏移量
+                    event_total_prob += event_prob * output_info['state_reachable'][index]
+                print(f'{prop_type}: {event_total_prob}')
 
         def worker(task_queue):
             while True:
@@ -698,10 +720,11 @@ def execute_prism_codes(prism_file_paths, parallel=False):
                 K, acc, steer = prism_file_path.split('_')[1:]
 
                 # 执行 PRISM 代码
-                output, error = execute_prism_code(prism_file_path=prism_file_path)
+                output, error = execute_prism_code(prism_file_path=prism_file_path,
+                                                   props_file_path=f'tmp/code_{K}_{acc}_{steer}.props')
                 # 从 output 中获取 result
                 output_info = get_info_from_output(output)
-                record.append((K, acc, steer, output_info['result']))
+                record.append((K, acc, steer, output_info['episode_reward']))
 
     print(os.getcwd())
     record.sort(key=lambda x: x[0], reverse=True)
@@ -730,7 +753,7 @@ def gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(5
             try:
                 parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
                                      model=model, action_spliter=action_spliter,
-                                     save_code=True, filename=f'tmp/code_{K}_{acc}_{steer}.prism')
+                                     save=True, filename=f'tmp/code_{K}_{acc}_{steer}')
                 return True
             except PermissionError:
                 return False
@@ -788,7 +811,7 @@ def gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(5
                     action_spliter = ActionSpliter(action_ranges=raw_action_range, granularity=granularity)
                     parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
                                          model=model, action_spliter=action_spliter,
-                                         save_code=True, filename=f'tmp/code_{K}_{acc}_{steer}.prism')
+                                         save=True, filename=f'tmp/code_{K}_{acc}_{steer}')
 
     # TODO remove
     # if len(granularity_range['acc']) == 1 and len(granularity_range['steer']) == 1:
@@ -873,16 +896,21 @@ if __name__ == '__main__':
     # result = get_info_from_output(output)
     # print(result)
 
-    properties = []
     env_data, env_states = load_data(config['data']['env']['path'])
     policy_data, policy_states = load_data(config['data']['policy']['path'])
-    avg_step, avg_episode_reward, p_crash, p_outoflane = utils.get_info_from_data(policy_data)
+    avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
+    config['data']['policy'] = {
+        'avg_step': int(avg_step),
+        'avg_episode_reward': avg_episode_reward,
+        'p_crash': p_crash,
+        'p_outoflane': p_outoflane,
+        'p_reachdest': p_reachdest
+    }
     print(
-        f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}')
-
-    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(40, 46),
+        f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
+    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(40, 43),
                     granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
-    # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
+    execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)

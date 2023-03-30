@@ -1,4 +1,7 @@
+import json
 import os
+
+from State import EpisodeReachStateProperty, EpisodeRewardProperty
 
 
 class PrismParser:
@@ -124,38 +127,72 @@ endrewards
 '''
         return code
 
-    def parse(self, save=False, filename='code.prism'):
+    def parse(self, save=False, file_path='./code.prism'):
         code = f'{self.declaration()}\n{self.parse_policy()}\n{self.parse_env()}'
         if save:
-            print('save code to', filename)
-            if not os.path.exists(os.path.dirname(filename)):
-                os.mkdir(os.path.dirname(filename))
+            print('save code to', file_path)
+            if not os.path.exists(os.path.dirname(file_path)):
+                os.mkdir(os.path.dirname(file_path))
             try:
-                with open(filename, 'w') as f:
+                with open(file_path, 'w') as f:
                     f.write(code)
             except FileNotFoundError:
                 print('file not found')
+
         return code
 
-    def properties(self):
+    def properties(self, avg_step, avg_reward, save=False, file_path='./props.props'):
+        abstract_props = []
+        for state_tag in range(1, self.node_num - 1):
+            abstract_props.append(EpisodeReachStateProperty(state_tag=state_tag, avg_step=avg_step))
+        abstract_props.append(EpisodeRewardProperty(avg_step=avg_step))
+
+        props = '\n'.join([prop.parse() for prop in abstract_props])
+
+        if save:
+            print('save props to', file_path)
+            if not os.path.exists(os.path.dirname(file_path)):
+                os.mkdir(os.path.dirname(file_path))
+            try:
+                with open(file_path, 'w') as f:
+                    f.write(props)
+            except FileNotFoundError:
+                print('file not found')
+
+        return props
+
+    def props_json(self, save=False, file_path='./props.json'):
         props = {}
         for tag in self.env_graph.nodes:
             if tag == 0 or tag == self.node_num - 1:
                 continue
             node = self.env_graph.nodes[tag]
-            if props['is_crash'] is None:
+            if 'is_crash' not in props:
                 props['is_crash'] = []
-            if props['is_outoflane'] is None:
+            if 'is_outoflane' not in props:
                 props['is_outoflane'] = []
-            if props['is_reachdest'] is None:
+            if 'is_reachdest' not in props:
                 props['is_reachdest'] = []
 
             if hasattr(node.state, 'is_crash') and node.state.is_crash > 0:
-                props['is_crash'].append(node.state.is_crash)
-            if hasattr(node.state, 'is_outoflane'):
-                props['is_outoflane'].append(node.state.is_outoflane)
-            if hasattr(node.state, 'is_reachdest'):
-                props['is_reachdest'].append(node.state.is_reachdest)
+                props['is_crash'].append((tag, node.state.is_crash))
+            if hasattr(node.state, 'is_outoflane') and node.state.is_outoflane > 0:
+                props['is_outoflane'].append((tag, node.state.is_outoflane))
+            if hasattr(node.state, 'is_reachdest') and node.state.is_reachdest > 0:
+                props['is_reachdest'].append((tag, node.state.is_reachdest))
+
+        if save:
+            print('save props json to', file_path)
+            if not os.path.exists(os.path.dirname(file_path)):
+                os.mkdir(os.path.dirname(file_path))
+            try:
+                with open(file_path, 'w') as f:
+                    json.dump(props, f)
+            except FileNotFoundError:
+                print('file not found')
+
+        return props
+
 
 
 

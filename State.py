@@ -220,6 +220,7 @@ class EnvType(enum.Enum):
     ACC = 'acc'
     LANE_KEEPING = 'lane_keeping'
     RACETRACK = 'racetrack'
+    INTERSECTION = 'intersection'
 
 
 class Trajectory:
@@ -244,6 +245,9 @@ class Trajectory:
             state = state.to_numpy()
             self.state.load(on_road=state, **reward, **info)
             self.action.load(**action)
+        elif self.env_type is EnvType.INTERSECTION:
+            self.state.load(**data.iloc[1:8], **data.iloc[10:11], **data.iloc[12:15])
+            self.action.load(**data.iloc[8:10])
 
 
 class Node:
@@ -297,3 +301,30 @@ class Graph:
 
                 # if state_tag != 0 and state_tag != self.K + 1:
                 #     tag_mark.add(state_tag)
+
+
+class Property:
+    def __init__(self):
+        self.value = None
+
+    def parse(self):
+        raise NotImplementedError
+
+
+class EpisodeRewardProperty(Property):
+    def __init__(self, avg_step: int):
+        super(EpisodeRewardProperty, self).__init__()
+        self.avg_step = avg_step
+
+    def parse(self):
+        return f'Rmin=? [C<={self.avg_step}]'
+
+
+class EpisodeReachStateProperty(Property):
+    def __init__(self, state_tag, avg_step: int):
+        super(EpisodeReachStateProperty, self).__init__()
+        self.state_tag = state_tag
+        self.avg_step = avg_step
+
+    def parse(self):
+        return f'Pmin=? [F<={self.avg_step} state={self.state_tag}]'
