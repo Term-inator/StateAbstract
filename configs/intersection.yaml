@@ -4,17 +4,12 @@ data:
     path: "../CTD3/project/env-TD3_risk-rnd-intersection-20232329/trajectory/trajectory.csv"
   policy:
     path: "../CTD3/project/policy-TD3_risk-intersection-20230329/trajectory/policy_trajectory.csv"
-    avg_step: 51
-    avg_episode_reward: 59.94167556352563
-    p_crash: 0.0
-    p_outoflane: 0.0
-    p_reachdest: 0.0
 
 cluster:
   type: "birch"
   threshold: 0.1
 
-  K: 45
+  K: 30
 
 action:
   granularity:

@@ -47,7 +47,7 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('./configs/acc.yaml')
+config = utils.load_yml('./configs/intersection.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
@@ -858,7 +858,7 @@ if __name__ == '__main__':
     start_time = time.time()
     print(f'start_time: {datetime.datetime.now()}')
     # test K
-    # env_data, env_states = load_data(params['env'])
+    env_data, env_states = load_data(config['data']['env']['path'])
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -868,18 +868,19 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
 
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(2, 13), calc_type=0b1111,
-    #             slide_window=3, epochs=10, parallel=False)
+    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 32), calc_type=0b1111,
+                slide_window=4, epochs=10, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(45, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
+    # 单个运行
     # K = config['cluster']['K']
     # cluster_type = config['cluster']['type']
     # env_data, env_states = load_data(config['data']['env']['path'])
@@ -887,14 +888,32 @@ if __name__ == '__main__':
     # model = _cluster(K, env_states, cluster_type=cluster_type)
     # set_label(env_data, model, K, cluster_type, 'env')
     # set_label(policy_data, model, K, cluster_type, 'policy')
+    # avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
+    # print(
+    #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
     # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
     #                                granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
+    # config['data']['policy'] = {
+    #     'avg_step': int(avg_step),
+    #     'avg_episode_reward': avg_episode_reward,
+    #     'p_crash': p_crash,
+    #     'p_outoflane': p_outoflane,
+    #     'p_reachdest': p_reachdest
+    # }
     # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
     #                      model=model, action_spliter=action_spliter,
-    #                      save_code=True, filename=f'./code.prism')
-    # output, error = execute_prism_code(prism_file_path=f'./code.prism')
-    # result = get_info_from_output(output)
-    # print(result)
+    #                      save=True, filename=f'./code')
+    # output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
+    # output_info = get_info_from_output(output)
+    # with open('./code.json', 'r') as f:
+    #     props_json = json.load(f)
+    #
+    # for prop_type in props_json:
+    #     event_total_prob = 0.
+    #     for state_tag, event_prob in props_json[prop_type]:
+    #         index = state_tag - 1  # 偏移量
+    #         event_total_prob += event_prob * output_info['state_reachable'][index]
+    #     print(f'{prop_type}: {event_total_prob}')
 
     env_data, env_states = load_data(config['data']['env']['path'])
     policy_data, policy_states = load_data(config['data']['policy']['path'])
@@ -908,7 +927,7 @@ if __name__ == '__main__':
     }
     print(
         f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
-    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(40, 43),
+    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 32),
                     granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
     execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 

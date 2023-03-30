@@ -246,8 +246,8 @@ class Trajectory:
             self.state.load(on_road=state, **reward, **info)
             self.action.load(**action)
         elif self.env_type is EnvType.INTERSECTION:
-            self.state.load(**data.iloc[1:8], **data.iloc[10:11], **data.iloc[12:15])
-            self.action.load(**data.iloc[8:10])
+            self.state.load(**data.iloc[1:7], **data.iloc[9:10], **data.iloc[11:14])
+            self.action.load(**data.iloc[7:9])
 
 
 class Node:
