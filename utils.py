@@ -285,6 +285,7 @@ def get_info_from_data(data):
     steps = 0
     num_crash = 0
     num_outoflane = 0
+    num_reachdest = 0
     episode_rewards = 0
     for i in range(len(data)):
         if data[i].state.state_type == 0:
@@ -294,8 +295,12 @@ def get_info_from_data(data):
         else:
             steps += 1
             episode_rewards += data[i].state.reward
-            num_crash += data[i].state.is_crash
-            num_outoflane += data[i].state.is_outoflane
+            if hasattr(data[i].state, 'is_crash'):
+                num_crash += data[i].state.is_crash
+            if hasattr(data[i].state, 'is_outoflane'):
+                num_outoflane += data[i].state.is_outoflane
+            if hasattr(data[i].state, 'is_reachdest'):
+                num_reachdest += data[i].state.is_reachdest
 
     avg_step = steps / episode
     avg_episode_reward = episode_rewards / episode

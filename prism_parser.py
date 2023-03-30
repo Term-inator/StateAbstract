@@ -93,8 +93,6 @@ global sched: [0..1] init 0;
         code = f'''
 module Env
 state : [0..{self.node_num}] init 0;
-is_crash : [0..1] init 0;
-is_outoflane : [0..1] init 0;
 
 [] (action={self.special_action_id}) & (sched=1) -> 1 : (sched\'=0);
 {t}
@@ -137,21 +135,28 @@ endrewards
                     f.write(code)
             except FileNotFoundError:
                 print('file not found')
-        # self.properties()
         return code
 
     def properties(self):
-        print('is_crash:')
+        props = {}
         for tag in self.env_graph.nodes:
             if tag == 0 or tag == self.node_num - 1:
                 continue
             node = self.env_graph.nodes[tag]
-            if node.state.is_crash != 0:
-                print(node.state.tag, node.state.is_crash)
-        print('is_outoflane:')
-        for tag in self.env_graph.nodes:
-            if tag == 0 or tag == self.node_num - 1:
-                continue
-            node = self.env_graph.nodes[tag]
-            if node.state.is_outoflane != 0:
-                print(node.state.tag, node.state.is_outoflane)
+            if props['is_crash'] is None:
+                props['is_crash'] = []
+            if props['is_outoflane'] is None:
+                props['is_outoflane'] = []
+            if props['is_reachdest'] is None:
+                props['is_reachdest'] = []
+
+            if hasattr(node.state, 'is_crash') and node.state.is_crash > 0:
+                props['is_crash'].append(node.state.is_crash)
+            if hasattr(node.state, 'is_outoflane'):
+                props['is_outoflane'].append(node.state.is_outoflane)
+            if hasattr(node.state, 'is_reachdest'):
+                props['is_reachdest'].append(node.state.is_reachdest)
+
+
+
+
