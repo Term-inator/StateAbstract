@@ -642,7 +642,7 @@ def get_info_from_output(output):
     states_val = int(re.sub(r'\D+', '', states_str))
     transitions_val = int(re.sub(r'\D', '', transitions_str))
     choices_val = int(re.sub(r'\D', '', choices_str))
-    state_reachable_val = [float(s) for s in state_reachable_str]
+    state_reachable_val = [float(s) if float(s) <= 1.0 else 0 for s in state_reachable_str]
     episode_reward_val = float(episode_reward_str)
 
     return {
@@ -858,7 +858,7 @@ if __name__ == '__main__':
     start_time = time.time()
     print(f'start_time: {datetime.datetime.now()}')
     # test K
-    env_data, env_states = load_data(config['data']['env']['path'])
+    # env_data, env_states = load_data(config['data']['env']['path'])
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -868,13 +868,13 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
 
     # 求 K 的最佳值
-    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 32), calc_type=0b1111,
-                slide_window=4, epochs=10, parallel=False)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 32), calc_type=0b1111,
+    #             slide_window=4, epochs=10, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(45, env_states, cluster_type='birch')
@@ -884,40 +884,15 @@ if __name__ == '__main__':
     # K = config['cluster']['K']
     # cluster_type = config['cluster']['type']
     # env_data, env_states = load_data(config['data']['env']['path'])
-    # policy_data, policy_states = load_data(config['data']['policy']['path'])
+    policy_data, policy_states = load_data(config['data']['policy']['path'])
     # model = _cluster(K, env_states, cluster_type=cluster_type)
     # set_label(env_data, model, K, cluster_type, 'env')
     # set_label(policy_data, model, K, cluster_type, 'policy')
-    # avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
-    # print(
-    #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
+    avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
+    print(
+        f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
     # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
     #                                granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
-    # config['data']['policy'] = {
-    #     'avg_step': int(avg_step),
-    #     'avg_episode_reward': avg_episode_reward,
-    #     'p_crash': p_crash,
-    #     'p_outoflane': p_outoflane,
-    #     'p_reachdest': p_reachdest
-    # }
-    # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
-    #                      model=model, action_spliter=action_spliter,
-    #                      save=True, filename=f'./code')
-    # output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
-    # output_info = get_info_from_output(output)
-    # with open('./code.json', 'r') as f:
-    #     props_json = json.load(f)
-    #
-    # for prop_type in props_json:
-    #     event_total_prob = 0.
-    #     for state_tag, event_prob in props_json[prop_type]:
-    #         index = state_tag - 1  # 偏移量
-    #         event_total_prob += event_prob * output_info['state_reachable'][index]
-    #     print(f'{prop_type}: {event_total_prob}')
-
-    env_data, env_states = load_data(config['data']['env']['path'])
-    policy_data, policy_states = load_data(config['data']['policy']['path'])
-    avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
     config['data']['policy'] = {
         'avg_step': int(avg_step),
         'avg_episode_reward': avg_episode_reward,
@@ -925,11 +900,41 @@ if __name__ == '__main__':
         'p_outoflane': p_outoflane,
         'p_reachdest': p_reachdest
     }
-    print(
-        f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
-    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 32),
-                    granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
-    execute_prism_codes(prism_file_paths='./tmp', parallel=True)
+    # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+    #                      model=model, action_spliter=action_spliter,
+    #                      save=True, filename=f'./code')
+    output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
+    output_info = get_info_from_output(output)
+    with open('./code.json', 'r') as f:
+        props_json = json.load(f)
+
+    print(output_info['state_reachable'])
+    print(f"sum: {sum(output_info['state_reachable'])}")
+    for prop_type in props_json:
+        event_total_prob = 0.
+        for state_tag, event_prob in props_json[prop_type]:
+            index = state_tag - 1  # 偏移量
+            print(event_prob)
+            print(output_info['state_reachable'][index])
+            event_total_prob += event_prob * output_info['state_reachable'][index]
+        print(f'{prop_type}: {event_total_prob}')
+    print(f'episode reward: {output_info["episode_reward"]}')
+
+    # env_data, env_states = load_data(config['data']['env']['path'])
+    # policy_data, policy_states = load_data(config['data']['policy']['path'])
+    # avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
+    # config['data']['policy'] = {
+    #     'avg_step': int(avg_step),
+    #     'avg_episode_reward': avg_episode_reward,
+    #     'p_crash': p_crash,
+    #     'p_outoflane': p_outoflane,
+    #     'p_reachdest': p_reachdest
+    # }
+    # print(
+    #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
+    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 32),
+    #                 granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
+    # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)
