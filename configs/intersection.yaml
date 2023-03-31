@@ -9,9 +9,13 @@ cluster:
   type: "birch"
   threshold: 0.1
 
-  K: 30
+  K: 31
 
 action:
   granularity:
     acc: 0.01
     steer: 0.01
+
+property:
+  name: ['episode_reward', 'is_crash', 'is_outoflane', 'is_reachdest']
+  class: ['base.EpisodeRewardProperty', 'base.OppositeProperty', 'base.OppositeProperty', 'base.OppositeProperty']

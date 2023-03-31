@@ -304,27 +304,27 @@ class Graph:
 
 
 class Property:
-    def __init__(self):
-        self.value = None
+    def __init__(self, name):
+        self.name = name
 
-    def parse(self):
-        raise NotImplementedError
+    def get_value(self, result_list, index):
+        return result_list[index]
 
 
 class EpisodeRewardProperty(Property):
-    def __init__(self, avg_step: int):
-        super(EpisodeRewardProperty, self).__init__()
-        self.avg_step = avg_step
+    def __init__(self, name='episode_reward'):
+        super(EpisodeRewardProperty, self).__init__(name)
 
-    def parse(self):
-        return f'Rmin=? [C<={self.avg_step}]'
+    def get_value(self, result_list, index):
+        return float(result_list[index])
 
 
-class EpisodeReachStateProperty(Property):
-    def __init__(self, state_tag, avg_step: int):
-        super(EpisodeReachStateProperty, self).__init__()
-        self.state_tag = state_tag
-        self.avg_step = avg_step
+class OppositeProperty(Property):
+    def __init__(self, name):
+        super(OppositeProperty, self).__init__(name)
 
-    def parse(self):
-        return f'Pmin=? [F<={self.avg_step} state={self.state_tag}]'
+    def get_value(self, result_list, index):
+        return 1 - float(result_list[index])
+
+
+

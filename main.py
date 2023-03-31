@@ -21,7 +21,7 @@ from sklearn.utils import Bunch
 
 import prism_parser
 import utils
-from State import Graph, read_csv, ActionSpliter, EnvType, Property, EpisodeReachStateProperty
+from base import Graph, read_csv, ActionSpliter, EnvType
 
 matplotlib.use('TkAgg')
 
@@ -40,7 +40,7 @@ def load_states(data):
         # target=target,
         # frame=frame,
         # target_names=target_names,
-        # DESCR=fdescr,
+        # DESCR=descr,
         # feature_names=feature_names,
         # filename=data_file_name,
         # data_module=DATA_MODULE,
@@ -586,15 +586,12 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save=F
     policy_graph.gen_nodes()
     policy_graph.gen_edges()
 
-    _parser = prism_parser.PrismParser(K, env_graph, policy_graph)
+    _parser = prism_parser.PrismParser(K, env_graph, policy_graph, props_dict=config['property'])
     retry = 0
     while retry < 10:
         try:
             code = _parser.parse(save=save, file_path=f'{filename}.prism')
-            props = _parser.properties(avg_step=config['data']['policy']['avg_step'],
-                                       avg_reward=config['data']['policy']['avg_episode_reward'],
-                                       save=save, file_path=f'{filename}.props')
-            props_json = _parser.props_json(save=save, file_path=f'{filename}.json')
+            property = _parser.gen_property_file(avg_step=config['data']['policy']['avg_step'], save=save, file_path=f'{filename}.props')
             # print(code)
             break
         except PermissionError:
@@ -629,30 +626,31 @@ def get_info_from_output(output):
         transitions_str = re.findall(r'Transitions:\s+(.*)', output)[0]
         choices_str = re.findall(r'Choices:\s+(.*)', output)[0]
         result_str = re.findall(r'Result:\s+(\d+\.\d+)', output)
-        state_reachable_str = result_str[0: -1]
-        episode_reward_str = result_str[-1]
+        print(result_str)
     except IndexError:
         print(output)
-        return {
-            'state_reachable': [],
-            'episode_reward': 0
-        }
+        res = {}
+        for prop in config['property']['name']:
+            res[prop] = 0
+        return res
 
     type_str = type_str.strip()
     states_val = int(re.sub(r'\D+', '', states_str))
     transitions_val = int(re.sub(r'\D', '', transitions_str))
     choices_val = int(re.sub(r'\D', '', choices_str))
-    state_reachable_val = [float(s) if float(s) <= 1.0 else 0 for s in state_reachable_str]
-    episode_reward_val = float(episode_reward_str)
 
-    return {
+    res = {
         'type': type_str,
         'states': states_val,
         'transitions': transitions_val,
         'choices': choices_val,
-        'state_reachable': state_reachable_val,
-        'episode_reward': episode_reward_val
     }
+
+    for i, prop_name in enumerate(config['property']['name']):
+        property = utils.class_from_path(config['property']['class'][i])(prop_name)
+        res[prop_name] = property.get_value(result_str, i)
+
+    return res
 
 
 def execute_prism_codes(prism_file_paths, parallel=False):
@@ -670,16 +668,6 @@ def execute_prism_codes(prism_file_paths, parallel=False):
             output_info = get_info_from_output(output)
             with record_lock:
                 record.append((K, acc, steer, output_info['episode_reward']))
-
-            with open(os.path.join('D:/University/project/StateAbstract', f'tmp/code_{K}_{acc}_{steer}.json'), 'r') as f:
-                props_json = json.load(f)
-
-            for prop_type in props_json:
-                event_total_prob = 0.
-                for state_tag, event_prob in props_json[prop_type]:
-                    index = state_tag - 1  # 偏移量
-                    event_total_prob += event_prob * output_info['state_reachable'][index]
-                print(f'{prop_type}: {event_total_prob}')
 
         def worker(task_queue):
             while True:
@@ -881,44 +869,26 @@ if __name__ == '__main__':
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
     # 单个运行
-    # K = config['cluster']['K']
-    # cluster_type = config['cluster']['type']
-    # env_data, env_states = load_data(config['data']['env']['path'])
+    K = config['cluster']['K']
+    cluster_type = config['cluster']['type']
+    env_data, env_states = load_data(config['data']['env']['path'])
     policy_data, policy_states = load_data(config['data']['policy']['path'])
-    # model = _cluster(K, env_states, cluster_type=cluster_type)
-    # set_label(env_data, model, K, cluster_type, 'env')
-    # set_label(policy_data, model, K, cluster_type, 'policy')
-    avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
-    print(
-        f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
-    #                                granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
-    config['data']['policy'] = {
-        'avg_step': int(avg_step),
-        'avg_episode_reward': avg_episode_reward,
-        'p_crash': p_crash,
-        'p_outoflane': p_outoflane,
-        'p_reachdest': p_reachdest
-    }
-    # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
-    #                      model=model, action_spliter=action_spliter,
-    #                      save=True, filename=f'./code')
+    model = _cluster(K, env_states, cluster_type=cluster_type)
+    set_label(env_data, model, K, cluster_type, 'env')
+    set_label(policy_data, model, K, cluster_type, 'policy')
+    policy_info = utils.get_info_from_data(policy_data, config['property'])
+    print(policy_info)
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
+                                   granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
+    config['data']['policy'].update(policy_info)
+    parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+                         model=model, action_spliter=action_spliter,
+                         save=True, filename=f'./code')
     output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
     output_info = get_info_from_output(output)
-    with open('./code.json', 'r') as f:
-        props_json = json.load(f)
-
-    print(output_info['state_reachable'])
-    print(f"sum: {sum(output_info['state_reachable'])}")
-    for prop_type in props_json:
-        event_total_prob = 0.
-        for state_tag, event_prob in props_json[prop_type]:
-            index = state_tag - 1  # 偏移量
-            print(event_prob)
-            print(output_info['state_reachable'][index])
-            event_total_prob += event_prob * output_info['state_reachable'][index]
-        print(f'{prop_type}: {event_total_prob}')
-    print(f'episode reward: {output_info["episode_reward"]}')
+    print(output_info)
+    result_error = utils.compare_result_error(policy_info, output_info, config['property'])
+    print(result_error)
 
     # env_data, env_states = load_data(config['data']['env']['path'])
     # policy_data, policy_states = load_data(config['data']['policy']['path'])

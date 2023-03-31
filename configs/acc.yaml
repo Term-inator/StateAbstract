@@ -15,3 +15,7 @@ action:
   granularity:
     acc: 0.01
     steer: 0.01
+
+property:
+  name: ['episode_reward', 'is_crash']
+  class: ['base.EpisodeRewardProperty', 'base.OppositeProperty']

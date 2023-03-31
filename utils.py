@@ -1,4 +1,6 @@
+import importlib
 import math
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -275,7 +277,7 @@ def expand_action_range(action_range, granularity):
         nearest_multiple(action_range[1], granularity, round_type='ceil')
 
 
-def get_info_from_data(data):
+def get_info_from_data(data, props_dict):
     """
     计算每个 episode 的平均步数和平均累计奖励
     :param data:
@@ -320,9 +322,46 @@ def get_info_from_data(data):
     p_outoflane = num_outoflane / episode
     p_reachdest = num_reachdest / episode
 
-    print(f'steps: {steps}')
+    print(f'steps: {steps}, avg_step: {avg_step}, episode: {episode}, avg_episode_reward: {avg_episode_reward}')
 
-    return avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest
+    res = {'avg_step': int(round(avg_step, 0))}
+    if 'episode_reward' in props_dict['name']:
+        res['episode_reward'] = avg_episode_reward
+    if 'is_crash' in props_dict['name']:
+        res['is_crash'] = p_crash
+    if 'is_outoflane' in props_dict['name']:
+        res['is_outoflane'] = p_outoflane
+    if 'is_reachdest' in props_dict['name']:
+        res['is_reachdest'] = p_reachdest
+
+    return res
 
 
+def compare_result_error(ground_truth: dict, result: dict, props_dict: dict) -> dict:
+    """
+    比较 ground_truth 和 result 的误差
+    :param ground_truth:
+    :param result:
+    :param props_dict:
+    :return:
+    """
+    error = {
+        'absolute': {},
+        'relative': {}
+    }
+    for key in props_dict['name']:
+        error['absolute'][key] = result[key] - ground_truth[key]
+        if error['absolute'][key] == 0:
+            error['relative'][key] = 0
+        else:
+            if ground_truth[key] != 0:
+                error['relative'][key] = error['absolute'][key] / ground_truth[key]
+            else:
+                error['relative'][key] = -1
+    return error
 
+
+def class_from_path(path: str) -> Callable:
+    module_name, class_name = path.rsplit(".", 1)
+    class_object = getattr(importlib.import_module(module_name), class_name)
+    return class_object
