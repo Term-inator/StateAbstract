@@ -77,7 +77,7 @@ class PrismParser:
         return self.add_transition(f'(state={node.state.tag}) & (sched=0)', updates=updates)
 
     def policy_reward(self, node):
-        return f'state={node.state.tag} : {node.state.reward};'
+        return f'state={node.state.tag} : {node.state.reward if node.state.reward >= 0 else 0};'
 
     def declaration(self):
         d = f'''
@@ -128,13 +128,6 @@ endrewards
 '''
         return code
 
-    def property(self, node, prop: str):
-        updates = []
-        prob = f'{getattr(node.state, prop):.3f}'
-        updates.append([f'1-{prob}', f'({prop}\'=0)'])
-        updates.append([f'{prob}', f'(placeholder_{prop}\'=0)'])
-        return self.add_transition(f'(state={node.state.tag})', updates=updates)
-
     def parse_property(self):
         state0 = self.policy_graph.nodes[0].state
         codes = []
@@ -144,15 +137,16 @@ endrewards
                 continue
             property_init = ''
             if hasattr(state0, prop):
-                property_init += f'placeholder_{prop}: [0..1] init 0;\n'
-                property_init += f'{prop}: [0..1] init 1;\n'
+                property_init += f'{prop}: [0..1] init 0;\n'
 
-                p = ''
+                p = f'[] ({prop}=1) -> 1: ({prop}\'=1);\n'
                 if len(self.props_dict['name']) > 0:
                     for tag in self.policy_graph.nodes:
                         if tag == 0 or tag == self.node_num - 1:
                             continue
-                        p += self.property(self.env_graph.nodes[tag], prop) + "\n"
+                        prob = float(getattr(self.policy_graph.nodes[tag].state, prop))
+                        if prob > 1e-4:
+                            p += self.add_transition(f'(state={tag})', updates=[[f'1', f'({prop}\'=1)']]) + '\n'
                 code = f'''
         
 module Property_{prop}
@@ -183,7 +177,7 @@ endmodule
         properties = [f'Rmin=? [C<={avg_step}]']
         for i, prop in enumerate(self.props_dict['name']):
             if hasattr(state0, prop):
-                properties.append(f'Pmax=? [ F<={avg_step} {prop}=0]')
+                properties.append(f'Pmax=? [ F<={avg_step} {prop}=1]')
 
         code = '\n'.join(properties)
         if save:

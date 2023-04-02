@@ -32,7 +32,7 @@ def load_states(data):
         # 开始结束状态
         if data[i].state.state_type is not None:
             continue
-        lst.append(data[i].state.to_list())
+        lst.append(data[i].state.to_cluster())
     lst = np.array(lst, dtype='float32')
 
     return Bunch(
@@ -47,14 +47,25 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('./configs/intersection.yaml')
+config = utils.load_yml('./configs/acc.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
-def load_data(filename):
-    data = read_csv(filename, EnvType(config['data']['env_type']))
-    states = load_states(data)
-    return data, states
+def load_data(config_data, data_type: str):
+    data = read_csv(config_data, data_type)
+
+    if data_type == 'env':
+        _data, _mean, _std = utils.standardize(copy.deepcopy(data))
+        config['data']['env']['mean'] = _mean
+        config['data']['env']['std'] = _std
+    elif data_type == 'policy':
+        _data, _, _ = utils.standardize(copy.deepcopy(data),
+                                        _mean=config['data']['env']['mean'],
+                                        _std=config['data']['env']['std'])
+    else:
+        raise Exception('data type error')
+    _states = load_states(data)
+    return data, _data, _states
 
 
 def _cluster(K, states, cluster_type):
@@ -65,7 +76,7 @@ def _cluster(K, states, cluster_type):
     1.2. 基于划分
     3. 基于层次
     """
-    print(f'cluster type: {cluster_type}')
+    print(f'cluster type: {cluster_type}, K: {K}')
     if cluster_type == 'kmeans':
         model = cluster.KMeans(K)
     elif cluster_type == 'mini_batch_kmeans':
@@ -108,7 +119,7 @@ def set_label(data, model, K, cluster_type, type):
                 data[i].state.tag = model.labels_[label_index] + 1
                 label_index += 1
             else:
-                data[i].state.tag = _predict(model, np.array([data[i].state.to_list()], dtype='float32'), cluster_type)[
+                data[i].state.tag = _predict(model, np.array([data[i].state.to_cluster()], dtype='float32'), cluster_type)[
                                         0] + 1
 
 
@@ -221,7 +232,7 @@ def SSE(data, graph):
     # 计算 SSE
     sse = 0
     for i in range(len(data)):
-        sse += np.linalg.norm(np.array(data[i].state.to_list()) - graph.nodes[data[i].state.tag].state.to_list()) ** 2
+        sse += np.linalg.norm(np.array(data[i].state.to_cluster()) - graph.nodes[data[i].state.tag].state.to_cluster()) ** 2
     return sse
 
 
@@ -492,7 +503,7 @@ def check_raw_data_steady(data, slide_window):
         if data[i].state.state_type == 0 or data[i].state.state_type == 1:
             states = []
             continue
-        states.append(data[i].state.to_list())
+        states.append(data[i].state.to_cluster())
         # print(tags)
         if len(states) == slide_window:
             # center = np.mean(states, axis=0)
@@ -626,7 +637,7 @@ def get_info_from_output(output):
         transitions_str = re.findall(r'Transitions:\s+(.*)', output)[0]
         choices_str = re.findall(r'Choices:\s+(.*)', output)[0]
         result_str = re.findall(r'Result:\s+(\d+\.\d+)', output)
-        print(result_str)
+        # print(result_str)
     except IndexError:
         print(output)
         res = {}
@@ -690,7 +701,7 @@ def execute_prism_codes(prism_file_paths, parallel=False):
                 if prism_file_path.endswith('.prism'):
                     # 文件名格式 code_K_acc_steer.prism
                     K, acc, steer = os.path.splitext(prism_file_path)[0].split('_')[1:]
-                    task_queue.put((K, acc, steer))
+                    task_queue.put((int(K), float(acc), float(steer)))
             return task_queue
 
         task_queue = add_tasks(prism_file_paths)
@@ -712,7 +723,7 @@ def execute_prism_codes(prism_file_paths, parallel=False):
                                                    props_file_path=f'tmp/code_{K}_{acc}_{steer}.props')
                 # 从 output 中获取 result
                 output_info = get_info_from_output(output)
-                record.append((K, acc, steer, output_info['episode_reward']))
+                record.append((int(K), float(acc), float(steer), output_info['episode_reward']))
 
     print(os.getcwd())
     record.sort(key=lambda x: x[0], reverse=True)
@@ -720,6 +731,36 @@ def execute_prism_codes(prism_file_paths, parallel=False):
     K, acc, steer, reward = zip(*record)
     print(f'K: {K}')
     print(f'reward: {reward}')
+
+    # if len(granularity_range['acc']) == 1 and len(granularity_range['steer']) == 1:
+    #     # 创建 2D 图像
+    #     fig = plt.figure()
+    #     ax = fig.add_subplot(111)
+    #
+    #     ax.plot(K, reward)
+    #     for x, y in zip(K, reward):
+    #         ax.text(x, y, f'{y:.2f}')
+    #     # plt.axhline(y=episode_reward, linestyle='--')
+    #     # ax.text(0, episode_reward, f'{episode_reward:.2f}')
+    #     ax.set_xlabel('K')
+    #     ax.set_ylabel('reward')
+    #     plt.title('Episode Reward')
+    #     fig.savefig(f'plot_Episode Reward.png')
+    # 创建3D图形
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 使用颜色编码表示第四个变量
+    sc = ax.scatter(acc, steer, K, c=reward, cmap='viridis')
+    plt.colorbar(sc)
+
+    ax.set_xlabel('acc')
+    ax.set_ylabel('steer')
+    ax.set_zlabel('K')
+    plt.title('Four-dimensional plot')
+    fig.savefig(f'plot_Four-dimensional plot.png')
+
+    # plt.show()
 
 
 def gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(5, 40),
@@ -801,52 +842,12 @@ def gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(5
                                          model=model, action_spliter=action_spliter,
                                          save=True, filename=f'tmp/code_{K}_{acc}_{steer}')
 
-    # TODO remove
-    # if len(granularity_range['acc']) == 1 and len(granularity_range['steer']) == 1:
-    #     record.sort(key=lambda x: x[0], reverse=True)
-    #     np.save('record.npy', record)
-    #     K, acc, steer, reward = zip(*record)
-    #     print(f'K: {K}')
-    #     print(f'reward: {reward}')
-    #     # 创建 2D 图像
-    #     # fig = plt.figure()
-    #     # ax = fig.add_subplot(111)
-    #     #
-    #     # ax.plot(K, reward)
-    #     # for x, y in zip(K, reward):
-    #     #     ax.text(x, y, f'{y:.2f}')
-    #     # plt.axhline(y=episode_reward, linestyle='--')
-    #     # ax.text(0, episode_reward, f'{episode_reward:.2f}')
-    #     # ax.set_xlabel('K')
-    #     # ax.set_ylabel('reward')
-    #     # plt.title('Episode Reward')
-    #     # fig.savefig(f'plot_Episode Reward.png')
-    # else:
-    #     np.save('record.npy', record)
-    #     K, acc, steer, reward = zip(*record)
-    #     print(f'K: {K}')
-    #     print(f'reward: {reward}')
-    #     # 创建3D图形
-    #     # fig = plt.figure()
-    #     # ax = fig.add_subplot(111, projection='3d')
-    #     #
-    #     # # 使用颜色编码表示第四个变量
-    #     # sc = ax.scatter(acc, steer, K, c=reward, cmap='viridis')
-    #     # plt.colorbar(sc)
-    #     #
-    #     # ax.set_xlabel('acc')
-    #     # ax.set_ylabel('steer')
-    #     # ax.set_zlabel('K')
-    #     # plt.title('Four-dimensional plot')
-    #     #
-    #     # plt.show()
-
 
 if __name__ == '__main__':
     start_time = time.time()
     print(f'start_time: {datetime.datetime.now()}')
     # test K
-    # env_data, env_states = load_data(config['data']['env']['path'])
+    env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -856,53 +857,48 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data), granularity={'acc': 0.01, 'steer': 0.01})
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data),
+                                   granularity={'acc': config['action']['granularity']['acc'],
+                                                'steer': config['action']['granularity']['steer']})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
 
     # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 32), calc_type=0b1111,
-    #             slide_window=4, epochs=10, parallel=False)
+    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 48), calc_type=0b1111,
+                slide_window=4, epochs=10, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(45, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
     # 单个运行
-    K = config['cluster']['K']
-    cluster_type = config['cluster']['type']
-    env_data, env_states = load_data(config['data']['env']['path'])
-    policy_data, policy_states = load_data(config['data']['policy']['path'])
-    model = _cluster(K, env_states, cluster_type=cluster_type)
-    set_label(env_data, model, K, cluster_type, 'env')
-    set_label(policy_data, model, K, cluster_type, 'policy')
-    policy_info = utils.get_info_from_data(policy_data, config['property'])
-    print(policy_info)
-    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
-                                   granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
-    config['data']['policy'].update(policy_info)
-    parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
-                         model=model, action_spliter=action_spliter,
-                         save=True, filename=f'./code')
-    output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
-    output_info = get_info_from_output(output)
-    print(output_info)
-    result_error = utils.compare_result_error(policy_info, output_info, config['property'])
-    print(result_error)
+    # K = config['cluster']['K']
+    # cluster_type = config['cluster']['type']
+    # env_data, env_states = load_data(config['data'], data_type='env')
+    # policy_data, policy_states = load_data(config['data'], data_type='policy')
+    # model = _cluster(K, env_states, cluster_type=cluster_type)
+    # set_label(env_data, model, K, cluster_type, 'env')
+    # set_label(policy_data, model, K, cluster_type, 'policy')
+    # policy_info = utils.get_info_from_data(policy_data, config['property'])
+    # print(policy_info)
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
+    #                                granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
+    # config['data']['policy'].update(policy_info)
+    # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+    #                      model=model, action_spliter=action_spliter,
+    #                      save=True, filename=f'./code')
+    # output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
+    # output_info = get_info_from_output(output)
+    # print(output_info)
+    # result_error = utils.compare_result_error(policy_info, output_info, config['property'])
+    # print(result_error)
 
-    # env_data, env_states = load_data(config['data']['env']['path'])
-    # policy_data, policy_states = load_data(config['data']['policy']['path'])
-    # avg_step, avg_episode_reward, p_crash, p_outoflane, p_reachdest = utils.get_info_from_data(policy_data)
-    # config['data']['policy'] = {
-    #     'avg_step': int(avg_step),
-    #     'avg_episode_reward': avg_episode_reward,
-    #     'p_crash': p_crash,
-    #     'p_outoflane': p_outoflane,
-    #     'p_reachdest': p_reachdest
-    # }
-    # print(
-    #     f'avg_step: {avg_step}, avg_episode_reward: {avg_episode_reward}, p_crash: {p_crash}, p_outoflane: {p_outoflane}, p_reachdest: {p_reachdest}')
-    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 32),
+    # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
+    # policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
+    # policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
+    # config['data']['policy'].update(policy_info)
+    # print(config['data']['policy'])
+    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 48),
     #                 granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
     # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 

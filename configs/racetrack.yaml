@@ -1,0 +1,28 @@
+data:
+  env_type: "racetrack"
+  env:
+    path: "../CTD3/project/env-TD3_risk-rnd-racetrack-20230330/trajectory/trajectory.csv"
+    episode_num: -1
+  policy:
+    path: "../CTD3/project/policy-TD3_risk-racetrack-20230330/trajectory/policy_trajectory.csv"
+    episode_num: -1
+  state_ranges: [[144, 288]]
+  action_ranges: [[288, 290]]
+  reward_ranges: [[290, 291]]
+  property_ranges: [[292, 294]]
+
+
+cluster:
+  type: "birch"
+  threshold: 0.5
+
+  K: 11
+
+action:
+  granularity:
+    acc: 0.05
+    steer: 0.05
+
+property:
+  name: ['episode_reward', 'is_crash', 'is_outoflane']
+  class: ['base.EpisodeRewardProperty', 'base.Property', 'base.Property']

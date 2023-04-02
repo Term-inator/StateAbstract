@@ -44,8 +44,8 @@ class ForceDirectedLayout:
                 if distance_square != 0:
                     distance = math.sqrt(distance_square)
 
-                    state_x = np.array(self.graph.nodes[i].state.to_list())
-                    state_y = np.array(self.graph.nodes[j].state.to_list())
+                    state_x = np.array(self.graph.nodes[i].state.to_cluster())
+                    state_y = np.array(self.graph.nodes[j].state.to_cluster())
 
                     # difference = np.square(state_x - state_y).sum()
                     difference = np.linalg.norm(state_x - state_y)

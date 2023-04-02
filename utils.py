@@ -1,3 +1,4 @@
+import copy
 import importlib
 import math
 from typing import Callable
@@ -60,12 +61,77 @@ def delete_threshold(data, threshold=10):
     return data
 
 
-def normalization(data):
+def normalize(data, _min=None, _max=None):
     """
-    TODO 计划删除
+    归一化
     """
-    _range = np.max(data) - np.min(data)
-    return (data - np.min(data)) / _range
+    norm_n = len(data[0].state.to_list())
+
+    if _min is None and _max is None:
+        _min = [100000 for _ in range(norm_n)]
+        _max = [-100000 for _ in range(norm_n)]
+        for j in range(norm_n):
+            _sum = 0
+            for traj in data:
+                if traj.state.state_type != 0 and traj.state.state_type != 1:
+                    if type(traj.state.to_list()[j]) == np.ndarray:
+                        _min[j] = min(_min[j], min(traj.state.to_list()[j]))
+                        _max[j] = max(_max[j], max(traj.state.to_list()[j]))
+                    else:
+                        _min[j] = min(_min[j], traj.state.to_list()[j])
+                        _max[j] = max(_max[j], traj.state.to_list()[j])
+
+    for i in range(len(data)):
+        if data[i].state.state_type != 0 or data[i].state.state_type != 1:
+            normed_state = []
+            state = data[i].state.to_list()
+            for j in range(norm_n):
+                normed_state.append((state[j] - _min[j]) / (_max[j] - _min[j]))
+            data[i].state.from_list(normed_state)
+
+    return data, _min, _max
+
+
+def standardize(data, _mean=None, _std=None):
+    """
+    归一化
+    """
+    norm_n = len(data[0].state.to_list())
+
+    if _mean is None and _std is None:
+        _mean = np.zeros(norm_n)
+        _std = np.zeros(norm_n)
+        for j in range(norm_n):
+            column = []
+            for traj in data:
+                if traj.state.state_type != 0 and traj.state.state_type != 1:
+                    column.append(traj.state.to_list()[j])
+
+            if type(column[0]) == np.ndarray:
+                mean_matrix = np.mean(column, axis=0)
+
+                # 计算每个矩阵的方差
+                variance_matrix = np.var(column, axis=0, ddof=1)
+
+                # 计算矩阵数组的标准差
+                std_matrix = np.sqrt(variance_matrix)
+                _mean[j] = mean_matrix
+                _std[j] = std_matrix
+            else:
+                _mean[j] = np.mean(column, axis=0)
+                _std[j] = np.std(column, axis=0, ddof=1)
+
+    for i in range(len(data)):
+        if data[i].state.state_type != 0 or data[i].state.state_type != 1:
+            normed_state = []
+            state = data[i].state.to_list()
+            # print(1, state)
+            for j in range(norm_n):
+                normed_state.append((state[j] - _mean[j]) / _std[j])
+            data[i].state.from_list(normed_state)
+            # print(2, data[i].state.to_list())
+
+    return data, _mean, _std
 
 
 def load_yml(path):

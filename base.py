@@ -2,23 +2,38 @@ import enum
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 import utils
 
 
-def read_csv(filename, env_type):
-    data_csv = pd.read_csv(filename)
+def read_csv(config_data, data_type):
+    data_csv = pd.read_csv(config_data[data_type]['path'])
 
     # data_csv = utils.delete_out_three_sigma(data_csv)
     # data_csv = delete_threshold(data_csv, threshold=20)
 
+    if 'episode_num' in config_data[data_type]:
+        episode_num = config_data[data_type]['episode_num']
+    else:
+        episode_num = len(data_csv)
+
+    episode_count = 0
     data = []
-    for i in data_csv.index:
-        trajectory = Trajectory(env_type)
-        # print(data_csv.loc[i].values[0:-1])
-        trajectory.load(data_csv.loc[i])
-        # print(state.__repr__())
-        data.append(trajectory)
+    with tqdm(total=len(data_csv)) as pbar:
+        for i in data_csv.index:
+            trajectory = Trajectory(config_data)
+            # print(data_csv.loc[i].values[0:-1])
+            trajectory.load(data_csv.loc[i])
+            # print(state.__repr__())
+            data.append(trajectory)
+            pbar.update(1)
+
+            if trajectory.state.state_type == 1:
+                episode_count += 1
+
+            if episode_count == episode_num:
+                break
 
     return np.array(data)
 
@@ -82,7 +97,7 @@ class Base:
             return NotImplemented
 
     def __hash__(self):
-        return hash(tuple(self.to_list()))
+        return hash(tuple(self.to_cluster()))
 
     def __eq__(self, other):
         return self.__hash__() == other.__hash__()
@@ -104,7 +119,7 @@ class Base:
     def __repr__(self):
         return str(vars(self))
 
-    def to_list(self):
+    def to_cluster(self):
         res = []
         for key, value in vars(self).items():
             if key in self.cluster_exclude:
@@ -115,11 +130,21 @@ class Base:
                 res.append(value)
         return res
 
-    def from_list(self, lst):
-        for key, value in zip(vars(self).keys(), lst):
+    def to_list(self):
+        res = []
+        for key, value in vars(self).items():
             if key in self.cluster_exclude:
                 continue
-            setattr(self, key, value)
+            res.append(value)
+        return res
+
+    def from_list(self, lst):
+        index = 0
+        for key in vars(self).keys():
+            if key in self.cluster_exclude:
+                continue
+            setattr(self, key, lst[index])
+            index += 1
 
     def to_dict(self):
         """
@@ -145,7 +170,8 @@ class State(Base):
         self.state_type = None
         self.tag = None
         self.readonly = ['cluster_exclude', 'readonly', 'state_type', 'tag']
-        self.cluster_exclude = ['reward', 'is_crash', 'is_outoflane']
+        # self.cluster_exclude = ['reward', 'is_crash', 'is_outoflane', 'is_reachdest']
+        self.cluster_exclude = ['reward', 'is_outoflane', 'is_reachdest']
         self.cluster_exclude.extend(self.readonly)
 
     def load(self, **kwargs):
@@ -224,30 +250,40 @@ class EnvType(enum.Enum):
 
 
 class Trajectory:
-    def __init__(self, env_type):
-        self.env_type = env_type
+    def __init__(self, config_data):
+        self.config_data = config_data
+        self.env_type = EnvType(self.config_data["env_type"])
         self.state = State()
         self.action = Action()
 
     def load(self, data):
-        if self.env_type is EnvType.ACC:
-            self.state.load(**data.iloc[0:2], **data.iloc[4:5], **data.iloc[6:8])
-            self.action.load(**data.iloc[2:4])
-        elif self.env_type is EnvType.LANE_KEEPING:
-            self.state.load(**data.iloc[0:3], **data.iloc[7:8], **data.iloc[9:11])
-            self.action.load(**data.iloc[6:7])
-        elif self.env_type is EnvType.RACETRACK:
-            state = data.iloc[144:288]
-            action = data.iloc[288:290]
-            reward = data.iloc[290:291]
-            info = data.iloc[292:294]
-            # to numpy
+        state_ranges = self.config_data['state_ranges']
+        action_ranges = self.config_data['action_ranges']
+        reward_ranges = self.config_data['reward_ranges']
+        property_ranges = self.config_data['property_ranges']
+
+        state = pd.Series(dtype='float64')
+        for _range in state_ranges:
+            state = pd.concat([state, data.iloc[_range[0]:_range[1]]])
+
+        action = pd.Series(dtype='float64')
+        for _range in action_ranges:
+            action = pd.concat([action, data.iloc[_range[0]:_range[1]]])
+
+        reward = pd.Series(dtype='float64')
+        for _range in reward_ranges:
+            reward = pd.concat([reward, data.iloc[_range[0]:_range[1]]])
+
+        property = pd.Series(dtype='float64')
+        for _range in property_ranges:
+            property = pd.concat([property, data.iloc[_range[0]:_range[1]]])
+
+        if self.env_type is EnvType.RACETRACK:
             state = state.to_numpy()
-            self.state.load(on_road=state, **reward, **info)
-            self.action.load(**action)
-        elif self.env_type is EnvType.INTERSECTION:
-            self.state.load(**data.iloc[1:7], **data.iloc[9:10], **data.iloc[11:14])
-            self.action.load(**data.iloc[7:9])
+            self.state.load(on_road=state, **reward, **property)
+        else:
+            self.state.load(**state, **reward, **property)
+        self.action.load(**action)
 
 
 class Node:
@@ -308,7 +344,7 @@ class Property:
         self.name = name
 
     def get_value(self, result_list, index):
-        return result_list[index]
+        return float(result_list[index])
 
 
 class EpisodeRewardProperty(Property):
@@ -325,6 +361,3 @@ class OppositeProperty(Property):
 
     def get_value(self, result_list, index):
         return 1 - float(result_list[index])
-
-
-

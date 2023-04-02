@@ -1,13 +1,9 @@
 data:
   env_type: "lane_keeping"
   env:
-    path: "../CTD3/project/env-TD3_risk-rnd-lane_keeping-20230318/trajectory/trajectory.csv"
+    path: "../CTD3/project/policy-TD3_risk-lane_keeping-20230318/trajectory/trajectory.csv"
   policy:
     path: "../CTD3/project/policy-TD3_risk-lane_keeping-20230318/trajectory/policy_trajectory.csv"
-  state_ranges: [ [ 0, 3 ] ]
-  action_ranges: [ [ 6, 7 ] ]
-  reward_ranges: [ [ 7, 8 ] ]
-  property_ranges: [ [ 9, 11 ] ]
 
 cluster:
   type: "birch"

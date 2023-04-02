@@ -1,7 +1,7 @@
 data:
   env_type: "acc"
   env:
-    path: "../CTD3/project/env-TD3_risk-rnd-acc-20230322/trajectory/trajectory.csv"
+    path: "../CTD3/project/policy-TD3_risk-acc-20230322/trajectory/trajectory.csv"
   policy:
     path: "../CTD3/project/policy-TD3_risk-acc-20230322/trajectory/policy_trajectory.csv"
   state_ranges: [ [ 0, 2 ] ]
