@@ -1,4 +1,7 @@
 import enum
+import math
+import threading
+from queue import Queue
 
 import numpy as np
 import pandas as pd
@@ -7,33 +10,137 @@ from tqdm import tqdm
 import utils
 
 
-def read_csv(config_data, data_type):
-    data_csv = pd.read_csv(config_data[data_type]['path'])
+def read_csv(config_data, data_type, parallel=False):
+    if parallel:
+        def read_csv_chunk(csv_path, chunk_start, chunk_size, queue):
+            for chunk in pd.read_csv(csv_path, chunksize=chunk_size, skiprows=chunk_start):
+                queue.put((chunk_start, chunk))
 
-    # data_csv = utils.delete_out_three_sigma(data_csv)
-    # data_csv = delete_threshold(data_csv, threshold=20)
+        def read_csv_multithread(csv_path, num_threads):
+            # 获取原始CSV文件的总行数
+            with open(csv_path, 'r') as f:
+                num_rows = sum(1 for line in f)
+
+            # 计算每个数据块的开始和结束位置
+            chunk_size = math.ceil(num_rows / num_threads)
+            chunk_starts = [i * chunk_size for i in range(num_threads)]
+
+            queue = Queue()
+            threads = []
+            for i in range(num_threads):
+                t = threading.Thread(target=read_csv_chunk, args=(csv_path, chunk_starts[i], chunk_size, queue))
+                threads.append(t)
+                t.start()
+
+            data = {}
+            for i in range(num_threads):
+                chunk_start, chunk = queue.get()
+                data[chunk_start] = chunk
+
+            for t in threads:
+                t.join()
+
+            # 获取列名
+            headers = data[0].columns
+            data[0] = data[0][1:]
+            # 按照数据块的开始位置对字典进行排序
+            data = sorted(data.items())
+
+            # 将所有数据块合并为一个DataFrame
+            dataframes = []
+            for _, chunk in data:
+                chunk.columns = headers
+                dataframes.append(chunk)
+            res = pd.concat(dataframes)
+
+            # 重置索引以避免索引冲突
+            res.reset_index(drop=True, inplace=True)
+
+            return res
+
+        num_threads = 4
+        data_csv = read_csv_multithread(config_data[data_type]['path'], num_threads)
+    else:
+        data_csv = pd.read_csv(config_data[data_type]['path'])
+
+        # data_csv = utils.delete_out_three_sigma(data_csv)
+        # data_csv = delete_threshold(data_csv, threshold=20)
 
     if 'episode_num' in config_data[data_type]:
         episode_num = config_data[data_type]['episode_num']
+        parallel = False
     else:
         episode_num = len(data_csv)
 
-    episode_count = 0
-    data = []
-    with tqdm(total=len(data_csv)) as pbar:
-        for i in data_csv.index:
-            trajectory = Trajectory(config_data)
-            # print(data_csv.loc[i].values[0:-1])
-            trajectory.load(data_csv.loc[i])
-            # print(state.__repr__())
-            data.append(trajectory)
-            pbar.update(1)
+    if parallel:
+        def load_data(data_csv, chunk_start, chunk_size, queue, pbar):
+            data = []
+            for i in range(chunk_start, chunk_start + chunk_size):
+                trajectory = Trajectory(config_data)
+                # print(data_csv.loc[i].values[0:-1])
+                trajectory.load(data_csv.loc[i])
+                # print(state.__repr__())
+                data.append(trajectory)
+                pbar.update(1)
+            queue.put((chunk_start, data))
 
-            if trajectory.state.state_type == 1:
-                episode_count += 1
+        def load_data_multithread(data_csv, num_threads):
+            # 获取原始CSV文件的总行数
+            num_rows = len(data_csv)
 
-            if episode_count == episode_num:
-                break
+            # 计算每个数据块的开始和结束位置
+            chunk_size = math.ceil(num_rows / num_threads)
+            chunk_starts = [i * chunk_size for i in range(num_threads)]
+            last_chunk_size = num_rows - chunk_starts[-1]
+
+            with tqdm(total=num_rows) as pbar:
+                pbar.set_description('Loading csv data to Trajectory (parallel)')
+                queue = Queue()
+                threads = []
+                for i in range(num_threads):
+                    t = threading.Thread(target=load_data,
+                                         args=(data_csv, chunk_starts[i],
+                                               last_chunk_size if i == num_threads - 1 else chunk_size, queue, pbar))
+                    threads.append(t)
+                    t.start()
+
+                data = {}
+                for i in range(num_threads):
+                    chunk_start, chunk = queue.get()
+                    data[chunk_start] = chunk
+
+                for t in threads:
+                    t.join()
+
+            # 按照数据块的开始位置对字典进行排序
+            data = sorted(data.items())
+
+            res = np.concatenate([chunk for _, chunk in data])
+
+            return res
+
+        num_threads = 4
+        data = load_data_multithread(data_csv, num_threads)
+        return data
+    else:
+        episode_count = 0
+        data = []
+        with tqdm(total=len(data_csv)) as pbar:
+            pbar.set_description('Loading csv data to Trajectory')
+            for i in data_csv.index:
+                trajectory = Trajectory(config_data)
+                # print(data_csv.loc[i].values[0:-1])
+                trajectory.load(data_csv.loc[i])
+                # print(trajectory.state.on_road)
+                # print(state.__repr__())
+                data.append(trajectory)
+                pbar.update(1)
+
+                if trajectory.state.state_type == 1:
+                    episode_count += 1
+
+                if episode_count == episode_num:
+                    break
 
     return np.array(data)
 

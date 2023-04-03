@@ -2,10 +2,8 @@ data:
   env_type: "racetrack"
   env:
     path: "../CTD3/project/env-TD3_risk-rnd-racetrack-20230330/trajectory/trajectory.csv"
-    episode_num: -1
   policy:
     path: "../CTD3/project/policy-TD3_risk-racetrack-20230330/trajectory/policy_trajectory.csv"
-    episode_num: -1
   state_ranges: [[144, 288]]
   action_ranges: [[288, 290]]
   reward_ranges: [[290, 291]]

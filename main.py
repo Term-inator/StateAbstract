@@ -47,12 +47,12 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('./configs/intersection.yaml')
+config = utils.load_yml('./configs/racetrack.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
 def load_data(config_data, data_type: str):
-    data = read_csv(config_data, data_type)
+    data = read_csv(config_data, data_type, parallel=True)
     _data = data
 
     if data_type == 'env':
@@ -886,8 +886,7 @@ if __name__ == '__main__':
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
     # 单个运行
-    # K = config['cluster']['K']
-    K = 4
+    K = config['cluster']['K']
     cluster_type = config['cluster']['type']
     env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
     policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')

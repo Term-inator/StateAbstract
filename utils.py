@@ -13,6 +13,7 @@ from scipy.special import gamma, factorial, comb
 from sklearn.decomposition import PCA
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.manifold import TSNE, LocallyLinearEmbedding, MDS, Isomap, SpectralEmbedding
+from tqdm import tqdm
 
 
 def three_sigma(series):
@@ -64,6 +65,7 @@ def delete_threshold(data, threshold=10):
 def normalize(data, _min=None, _max=None):
     """
     归一化
+    TODO 尚不支持数组和 tqdm
     """
     norm_n = len(data[0].state.to_list())
 
@@ -102,8 +104,8 @@ def standardize(data, _mean=None, _std=None):
     norm_n = len(data[0].state.to_list())
 
     if _mean is None or _std is None:
-        _mean = np.zeros(norm_n)
-        _std = np.zeros(norm_n)
+        _mean = [0 for _ in range(norm_n)]
+        _std = [0 for _ in range(norm_n)]
         for j in range(norm_n):
             column = []
             for traj in data:
@@ -124,18 +126,23 @@ def standardize(data, _mean=None, _std=None):
                 _mean[j] = np.mean(column, axis=0)
                 _std[j] = np.std(column, axis=0, ddof=1)
 
-    for i in range(len(data)):
-        if data[i].state.state_type != 0 and data[i].state.state_type != 1:
-            normed_state = []
-            state = data[i].state.to_list()
-            # print(1, state, data[i].state.state_type)
-            for j in range(norm_n):
-                if _std[j] == 0:
-                    normed_state.append(state[j])
-                else:
-                    normed_state.append((state[j] - _mean[j]) / _std[j])
-            data[i].state.from_list(normed_state)
-            # print(2, data[i].state.to_list())
+    with tqdm(total=len(data)) as pbar:
+        pbar.set_description('Standardize')
+        for i in range(len(data)):
+            if data[i].state.state_type != 0 and data[i].state.state_type != 1:
+                normed_state = []
+                state = data[i].state.to_list()
+                # print(1, state, data[i].state.state_type)
+                for j in range(norm_n):
+                    if type(_std[j]) is np.ndarray and (_std[j] == 0).any():
+                        normed_state.append(state[j])
+                    elif type(_std[j]) is not np.ndarray and _std[j] == 0:
+                        normed_state.append(state[j])
+                    else:
+                        normed_state.append((state[j] - _mean[j]) / _std[j])
+                data[i].state.from_list(normed_state)
+                # print(2, data[i].state.to_list())
+            pbar.update(1)
 
     return data, _mean, _std
 
@@ -196,15 +203,15 @@ def calc_prob(K, n, m):
 
 def stirling(n, m):
     res = 0
-    for i in range(m+1):
-        res += pow(-1, m-i) * pow(i, n) / (factorial(i, exact=True) * factorial(m-i, exact=True))
+    for i in range(m + 1):
+        res += pow(-1, m - i) * pow(i, n) / (factorial(i, exact=True) * factorial(m - i, exact=True))
     return res
 
 
 def calc_count_opt(K, n, m):
     res = stirling(n, m)
     for i in range(0, m):
-        res *= (K-i)
+        res *= (K - i)
     return round(res)
 
 
@@ -215,11 +222,11 @@ def opt_correct_prove():
     """
     init_memo(40, 40, 40)
     for K in range(2, 40):
-        for n in range(2, min(K+1, 15)):
-            for m in range(2, n+1):
+        for n in range(2, min(K + 1, 15)):
+            for m in range(2, n + 1):
                 count = calc_count(K, n, m)
                 count_opt = calc_count_opt(K, n, m)
-                if count != 0 and abs(count - count_opt)/count > 1e-6:
+                if count != 0 and abs(count - count_opt) / count > 1e-6:
                     print(f'K = {K}, n = {n}, m = {m}, wrong, ori:{calc_count(K, n, m)}, opt:{calc_count_opt(K, n, m)}')
                 else:
                     print(f'K = {K}, n = {n}, m = {m}, correct, eps={abs(count - count_opt)}')
@@ -235,11 +242,11 @@ def delta():
     """
     init_memo(60, 60, 60)
     for K in range(2, 60):
-        for n in range(2, min(K+1, 15)):
-            for m in range(2, n+1):
-                if calc_count(K, n, m) > calc_count(K, n, m-1):
+        for n in range(2, min(K + 1, 15)):
+            for m in range(2, n + 1):
+                if calc_count(K, n, m) > calc_count(K, n, m - 1):
                     print('K = {}, n = {}, m = {}, inc'.format(K, n, m))
-                elif calc_count_opt(K, n, m) < calc_count_opt(K, n, m-1):
+                elif calc_count_opt(K, n, m) < calc_count_opt(K, n, m - 1):
                     print('K = {}, n = {}, m = {}, dec'.format(K, n, m))
                 else:
                     print('K = {}, n = {}, m = {}, same'.format(K, n, m))
