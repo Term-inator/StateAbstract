@@ -53,7 +53,7 @@ class PrismParser:
             updates = []
             for next_state_id in next_state_ids:
                 weight = node.children[(next_state_id, action_id)]
-                updates.append([f'{weight}/{weight_sum}' if weight_sum != 0 else '', f'(state\'={next_state_id}) & (sched\'=0)'])
+                updates.append([f'{weight}/{weight_sum}' if weight_sum != 0 else '', f'(state\'={next_state_id}) & (sched\'={0 if len(self.props_dict["name"]) == 0 else 2})'])
             codes.append(self.add_transition(f'(state={node.state.tag}) & (action={action_id}) & (sched=1)', updates=updates))
         return '\n'.join(codes)
 
@@ -83,7 +83,7 @@ class PrismParser:
         d = f'''
 mdp
 
-global sched: [0..1] init 0;
+global sched: [0..{len(self.props_dict['name'])}] init 0;
 '''
         return d
 
@@ -98,7 +98,7 @@ global sched: [0..1] init 0;
 module Env
 state : [0..{self.node_num}] init 0;
 
-[] (action={self.special_action_id}) & (sched=1) -> 1 : (sched\'=0);
+[] (action={self.special_action_id}) & (sched=1) -> 1 : (sched\'={0 if len(self.props_dict["name"]) == 0 else 2});
 {t}
 endmodule
 '''
@@ -139,19 +139,20 @@ endrewards
             if hasattr(state0, prop):
                 property_init += f'{prop}: [0..1] init 0;\n'
 
-                p = f'[] ({prop}=1) -> 1: ({prop}\'=1);\n'
+                p = f'[] ({prop}=1) & (sched={i+1}) -> 1: ({prop}\'=1) & (sched\'={(i+2)%(len(self.props_dict["name"])+1)});\n'
                 if len(self.props_dict['name']) > 0:
                     for tag in self.policy_graph.nodes:
                         if tag == 0 or tag == self.node_num - 1:
                             continue
                         prob = float(getattr(self.policy_graph.nodes[tag].state, prop))
                         if prob > 1e-4:
-                            p += self.add_transition(f'(state={tag})', updates=[[f'1', f'({prop}\'=1)']]) + '\n'
+                            p += self.add_transition(f'(state={tag}) & (sched={i+1})', updates=[[f'1', f'({prop}\'=1) & (sched\'={(i+2)%(len(self.props_dict["name"])+1)})']]) + '\n'
                 code = f'''
         
 module Property_{prop}
 {property_init}
 {p}
+[](sched={i+1}) -> (sched\'={(i+2)%(len(self.props_dict["name"])+1)});
 endmodule
 '''
                 codes.append(code)

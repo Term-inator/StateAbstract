@@ -82,11 +82,14 @@ def normalize(data, _min=None, _max=None):
                         _max[j] = max(_max[j], traj.state.to_list()[j])
 
     for i in range(len(data)):
-        if data[i].state.state_type != 0 or data[i].state.state_type != 1:
+        if data[i].state.state_type != 0 and data[i].state.state_type != 1:
             normed_state = []
             state = data[i].state.to_list()
             for j in range(norm_n):
-                normed_state.append((state[j] - _min[j]) / (_max[j] - _min[j]))
+                if _max[j] == _min[j]:
+                    normed_state.append(state[j])
+                else:
+                    normed_state.append((state[j] - _min[j]) / (_max[j] - _min[j]))
             data[i].state.from_list(normed_state)
 
     return data, _min, _max
@@ -98,7 +101,7 @@ def standardize(data, _mean=None, _std=None):
     """
     norm_n = len(data[0].state.to_list())
 
-    if _mean is None and _std is None:
+    if _mean is None or _std is None:
         _mean = np.zeros(norm_n)
         _std = np.zeros(norm_n)
         for j in range(norm_n):
@@ -122,12 +125,15 @@ def standardize(data, _mean=None, _std=None):
                 _std[j] = np.std(column, axis=0, ddof=1)
 
     for i in range(len(data)):
-        if data[i].state.state_type != 0 or data[i].state.state_type != 1:
+        if data[i].state.state_type != 0 and data[i].state.state_type != 1:
             normed_state = []
             state = data[i].state.to_list()
-            # print(1, state)
+            # print(1, state, data[i].state.state_type)
             for j in range(norm_n):
-                normed_state.append((state[j] - _mean[j]) / _std[j])
+                if _std[j] == 0:
+                    normed_state.append(state[j])
+                else:
+                    normed_state.append((state[j] - _mean[j]) / _std[j])
             data[i].state.from_list(normed_state)
             # print(2, data[i].state.to_list())
 

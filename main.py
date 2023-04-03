@@ -21,7 +21,7 @@ from sklearn.utils import Bunch
 
 import prism_parser
 import utils
-from base import Graph, read_csv, ActionSpliter, EnvType
+from base import Graph, read_csv, ActionSpliter
 
 matplotlib.use('TkAgg')
 
@@ -47,12 +47,13 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('./configs/acc.yaml')
+config = utils.load_yml('./configs/intersection.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
 def load_data(config_data, data_type: str):
     data = read_csv(config_data, data_type)
+    _data = data
 
     if data_type == 'env':
         _data, _mean, _std = utils.standardize(copy.deepcopy(data))
@@ -64,7 +65,17 @@ def load_data(config_data, data_type: str):
                                         _std=config['data']['env']['std'])
     else:
         raise Exception('data type error')
-    _states = load_states(data)
+    # if data_type == 'env':
+    #     _data, _min, _max = utils.normalize(copy.deepcopy(data))
+    #     config['data']['env']['min'] = _min
+    #     config['data']['env']['max'] = _max
+    # elif data_type == 'policy':
+    #     _data, _, _ = utils.normalize(copy.deepcopy(data),
+    #                                   _min=config['data']['env']['min'],
+    #                                   _max=config['data']['env']['max'])
+    # else:
+    #     raise Exception('data type error')
+    _states = load_states(_data)
     return data, _data, _states
 
 
@@ -119,8 +130,9 @@ def set_label(data, model, K, cluster_type, type):
                 data[i].state.tag = model.labels_[label_index] + 1
                 label_index += 1
             else:
-                data[i].state.tag = _predict(model, np.array([data[i].state.to_cluster()], dtype='float32'), cluster_type)[
-                                        0] + 1
+                data[i].state.tag = \
+                _predict(model, np.array([data[i].state.to_cluster()], dtype='float32'), cluster_type)[
+                    0] + 1
 
 
 def draw_graph(graph, K):
@@ -232,7 +244,8 @@ def SSE(data, graph):
     # 计算 SSE
     sse = 0
     for i in range(len(data)):
-        sse += np.linalg.norm(np.array(data[i].state.to_cluster()) - graph.nodes[data[i].state.tag].state.to_cluster()) ** 2
+        sse += np.linalg.norm(
+            np.array(data[i].state.to_cluster()) - graph.nodes[data[i].state.tag].state.to_cluster()) ** 2
     return sse
 
 
@@ -602,7 +615,8 @@ def parse_code_from_data(K, env_data, policy_data, model, action_spliter, save=F
     while retry < 10:
         try:
             code = _parser.parse(save=save, file_path=f'{filename}.prism')
-            property = _parser.gen_property_file(avg_step=config['data']['policy']['avg_step'], save=save, file_path=f'{filename}.props')
+            property = _parser.gen_property_file(avg_step=config['data']['policy']['avg_step'], save=save,
+                                                 file_path=f'{filename}.props')
             # print(code)
             break
         except PermissionError:
@@ -847,7 +861,7 @@ if __name__ == '__main__':
     start_time = time.time()
     print(f'start_time: {datetime.datetime.now()}')
     # test K
-    env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
+    # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
 
     # 验证原始数据有稳定性
     # raw_steady = check_raw_data_steady(env_data, 5)
@@ -857,15 +871,15 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data),
-                                   granularity={'acc': config['action']['granularity']['acc'],
-                                                'steer': config['action']['granularity']['steer']})
+    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data),
+    #                                granularity={'acc': config['action']['granularity']['acc'],
+    #                                             'steer': config['action']['granularity']['steer']})
     # 对比聚类算法
     # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
 
     # 求 K 的最佳值
-    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(10, 48), calc_type=0b1111,
-                slide_window=4, epochs=10, parallel=False)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(1000, 1001), calc_type=0b1111,
+    #             slide_window=3, epochs=1, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(45, env_states, cluster_type='birch')
@@ -873,32 +887,34 @@ if __name__ == '__main__':
 
     # 单个运行
     # K = config['cluster']['K']
-    # cluster_type = config['cluster']['type']
-    # env_data, env_states = load_data(config['data'], data_type='env')
-    # policy_data, policy_states = load_data(config['data'], data_type='policy')
-    # model = _cluster(K, env_states, cluster_type=cluster_type)
-    # set_label(env_data, model, K, cluster_type, 'env')
-    # set_label(policy_data, model, K, cluster_type, 'policy')
-    # policy_info = utils.get_info_from_data(policy_data, config['property'])
-    # print(policy_info)
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
-    #                                granularity={'acc': config['action']['granularity']['acc'], 'steer': config['action']['granularity']['steer']})
-    # config['data']['policy'].update(policy_info)
-    # parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
-    #                      model=model, action_spliter=action_spliter,
-    #                      save=True, filename=f'./code')
-    # output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
-    # output_info = get_info_from_output(output)
-    # print(output_info)
-    # result_error = utils.compare_result_error(policy_info, output_info, config['property'])
-    # print(result_error)
+    K = 4
+    cluster_type = config['cluster']['type']
+    env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
+    policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
+    model = _cluster(K, env_states, cluster_type=cluster_type)
+    set_label(env_data, model, K, cluster_type, 'env')
+    set_label(policy_data, model, K, cluster_type, 'policy')
+    policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
+    print(policy_info)
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, policy_data),
+                                   granularity={'acc': config['action']['granularity']['acc'],
+                                                'steer': config['action']['granularity']['steer']})
+    config['data']['policy'].update(policy_info)
+    parse_code_from_data(K=K, env_data=env_data, policy_data=policy_data,
+                         model=model, action_spliter=action_spliter,
+                         save=True, filename=f'./code')
+    output, error = execute_prism_code(prism_file_path=f'./code.prism', props_file_path=f'./code.props')
+    output_info = get_info_from_output(output)
+    print(output_info)
+    result_error = utils.compare_result_error(policy_info, output_info, config['property'])
+    print(result_error)
 
     # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
     # policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
     # policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
     # config['data']['policy'].update(policy_info)
     # print(config['data']['policy'])
-    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 48),
+    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(1000, 1001),
     #                 granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
     # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 

@@ -4,16 +4,16 @@ data:
     path: "../CTD3/project/env-TD3_risk-rnd-lane_keeping-20230318/trajectory/trajectory.csv"
   policy:
     path: "../CTD3/project/policy-TD3_risk-lane_keeping-20230318/trajectory/policy_trajectory.csv"
-  state_ranges: [ [ 0, 3 ] ]
+  state_ranges: [ [ 0, 5 ] ]
   action_ranges: [ [ 6, 7 ] ]
   reward_ranges: [ [ 7, 8 ] ]
-  property_ranges: [ [ 9, 11 ] ]
+  property_ranges: [ [ 10, 11 ] ]
 
 cluster:
   type: "birch"
   threshold: 0.1
 
-  K: 6
+  K: 3
 
 action:
   granularity:
