@@ -50,9 +50,9 @@ def merge_prism_experiment(file_list):
     return tuples
 
 
-directory = 'output/race_track'
+directory = 'output/intersection/env2_policy'
 
-npy_files = ['6-10.npy', '10-30.npy', '31-50.npy', '51-90.npy', '91-100.npy']
+npy_files = ['record1.npy', 'record2.npy']
 files = []
 
 for npy_file in npy_files:
@@ -60,7 +60,7 @@ for npy_file in npy_files:
 
 
 data = merge_prism_experiment(files)
-np.save(os.path.join(directory, 'K,acc,steer,reward.npy'), data)
+np.save(os.path.join(directory, 'record.npy'), data)
 K, acc, steer, reward = zip(*data)
 print(K)
 print(acc)

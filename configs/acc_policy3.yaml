@@ -1,0 +1,27 @@
+# 测试好奇心
+data:
+  env_type: "acc"
+  env:
+    path: "../CTD3/project/env-TD3_risk-rnd-acc-20230322/trajectory/trajectory.csv"
+  policy:
+    path: "../CTD3/project/policy-TD3_risk-acc-20230405/trajectory/policy_trajectory.csv"
+  state_ranges: [ [ 0, 2 ] ]
+  action_ranges: [ [ 2, 4 ] ]
+  reward_ranges: [ [ 4, 5 ] ]
+  property_ranges: [ [ 6, 8 ] ]
+
+
+cluster:
+  type: "birch"
+  threshold: 0.5
+
+  K: 45
+
+action:
+  granularity:
+    acc: 0.01
+    steer: 0.01
+
+property:
+  name: ['episode_reward', 'is_crash']
+  class: ['base.EpisodeRewardProperty', 'base.Property']

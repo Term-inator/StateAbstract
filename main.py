@@ -47,7 +47,7 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('configs/intersection_cmp2.yaml')
+config = utils.load_yml('configs/lane_keeping_policy2.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
@@ -921,9 +921,9 @@ if __name__ == '__main__':
     policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
     config['data']['policy'].update(policy_info)
     print(config['data']['policy'])
-    gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(6, 41),
-                    granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
-    execute_prism_codes(prism_file_paths='./tmp', parallel=True)
+    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 36),
+    #                 granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
+    # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 
     # draw_graph(env_graph, K)
     # draw_heatmap(policy_data)
