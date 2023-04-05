@@ -12,7 +12,7 @@ data:
 
 cluster:
   type: "birch"
-  threshold: 0.1
+  threshold: 0.5
 
   K: 5
 

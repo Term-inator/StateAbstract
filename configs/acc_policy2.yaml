@@ -1,9 +1,10 @@
+# 测试好奇心
 data:
   env_type: "acc"
   env:
     path: "../CTD3/project/env-TD3_risk-rnd-acc-20230322/trajectory/trajectory.csv"
   policy:
-    path: "../CTD3/project/policy-TD3_risk-acc-20230322/trajectory/policy_trajectory.csv"
+    path: "../CTD3/project/policy-TD3_risk-acc-20230404/trajectory/policy_trajectory.csv"
   state_ranges: [ [ 0, 2 ] ]
   action_ranges: [ [ 2, 4 ] ]
   reward_ranges: [ [ 4, 5 ] ]
@@ -12,7 +13,7 @@ data:
 
 cluster:
   type: "birch"
-  threshold: 0.1
+  threshold: 0.5
 
   K: 45
 

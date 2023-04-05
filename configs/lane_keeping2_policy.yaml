@@ -1,7 +1,7 @@
 data:
   env_type: "lane_keeping"
   env:
-    path: "../CTD3/project/policy-TD3_risk-lane_keeping-20230318/trajectory/trajectory.csv"
+    path: "../CTD3/project/env-TD3_risk-rnd-lane_keeping-20230404/trajectory/trajectory.csv"
   policy:
     path: "../CTD3/project/policy-TD3_risk-lane_keeping-20230318/trajectory/policy_trajectory.csv"
   state_ranges: [ [ 0, 5 ] ]

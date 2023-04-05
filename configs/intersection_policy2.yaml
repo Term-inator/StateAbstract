@@ -1,9 +1,9 @@
 data:
   env_type: "intersection"
   env:
-    path: "../CTD3/project/policy-TD3_risk-intersection-20230329/trajectory/trajectory.csv"
+    path: "../CTD3/project/env-TD3_risk-rnd-intersection-20232329/trajectory/trajectory.csv"
   policy:
-    path: "../CTD3/project/policy-TD3_risk-intersection-20230329/trajectory/policy_trajectory.csv"
+    path: "../CTD3/project/policy-TD3_risk-intersection-20230404/trajectory/policy_trajectory.csv"
   state_ranges: [[1, 7]]
   action_ranges: [[7, 9]]
   reward_ranges: [[9, 10]]
@@ -14,7 +14,7 @@ cluster:
   type: "birch"
   threshold: 0.5
 
-  K: 34
+  K: 5
 
 action:
   granularity:

@@ -7,7 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-directory = 'output/racetrack'
+task = 'intersection'
+directory = f'output/{task}/cmp2'
 
 
 def get_data(npy_file):
@@ -24,26 +25,28 @@ def try_K_plot(sse, silhouette, calinski_harabasz, steady, save=False):
     ax1.tick_params(labelsize=20)
     ax2.tick_params(labelsize=20)
 
-    fig2 = plt.figure(figsize=(15, 8))
-    ax3 = fig2.add_subplot(1, 1, 1)
-    ax3.set_xlabel('K', fontsize=20)
+    # fig2 = plt.figure(figsize=(15, 8))
+    # ax3 = fig2.add_subplot(1, 1, 1)
+    # ax3.set_xlabel('K', fontsize=20)
 
-    ax1.plot(sse[0], sse[1], 'r', label='SSE')
-    ax2.plot(silhouette[0], silhouette[1], 'b', label='Silhouette')
+    ax1.plot(sse[0], sse[1], 'b', label='SSE')
+    ax2.plot(silhouette[0], silhouette[1], 'r', label='Silhouette')
     ax2.plot(calinski_harabasz[0], calinski_harabasz[1], 'g', label='Calinski-Harabasz')
-    ax3.plot(steady[0], steady[1], 'b', label='Steady')
+    # ax3.plot(steady[0], steady[1], 'b', label='Steady')
+    ax2.plot(steady[0], steady[1], 'y', label='Steady')
 
     ax1.legend(loc='upper left', fontsize=20)
     ax2.legend(loc='upper right', fontsize=20)
-    ax3.legend(loc='upper left', fontsize=20)
+    # ax3.legend(loc='upper left', fontsize=20)
 
-    ax3.tick_params(labelsize=20)
+    # ax3.tick_params(labelsize=20)
 
     plt.show()
 
     if save:
-        fig1.savefig('plot_sse_sh_ch.png')
-        fig2.savefig('plot_steady.png')
+        # fig1.savefig(os.path.join(directory, 'plot_sse_sh_ch.png'))
+        # fig2.savefig(os.path.join(directory, 'plot_steady.png'))
+        fig1.savefig(os.path.join(directory, 'plot_all.png'))
 
 
 def episode_reward_plot(reward, episode_reward, save=False):
@@ -62,7 +65,7 @@ def episode_reward_plot(reward, episode_reward, save=False):
     plt.show()
 
     if save:
-        fig.savefig(f'plot_episode_reward.png')
+        fig.savefig(os.path.join(directory, 'plot_episode_reward.png'))
 
 def get_sse(file):
     data = get_data(file)
@@ -98,14 +101,14 @@ if __name__ == '__main__':
     # file_ch = os.path.join(directory, 'calinski_harabasz.npy')
     # x_ch, value_ch = get_calinski_harabasz(file_ch)
     # print(np.vstack((x_sse, value_sse, value_sil, value_ch)).T)
+    #
+    # file_st = os.path.join(directory, 'steady.npy')
+    # x_st, value_st = get_sse(file_st)
+    # print(np.vstack((x_st, value_st)).T)
+    #
+    # try_K_plot((x_sse, value_sse), (x_sil, value_sil), (x_ch, value_ch), (x_st, value_st), save=True)
 
-    file_st = os.path.join(directory, 'steady.npy')
-    x_st, value_st = get_sse(file_st)
-    print(np.vstack((x_st, value_st)).T)
-
-    # try_K_plot((x_sse, value_sse), (x_sil, value_sil), (x_ch, value_ch), (x_st, value_st))
-
-    # file = os.path.join(directory, 'K,acc,steer,reward.npy')
-    # K, _, _, reward = get_prism_experiment(file)
-    # print(np.vstack((K, reward)).T)
-    # episode_reward_plot((K, reward), 640)
+    file = os.path.join(directory, 'record.npy')
+    K, _, _, reward = get_prism_experiment(file)
+    print(np.vstack((K, reward)).T)
+    episode_reward_plot((K, reward), 9.36, save=True)
