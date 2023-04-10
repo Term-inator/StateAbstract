@@ -306,7 +306,7 @@ def cluster_visualize(model, data, display_type='tsne', n_components=2, display_
         lda = LinearDiscriminantAnalysis(n_components=n_components)
         data_vis = lda.fit_transform(data)
     else:
-        raise ValueError('display_type must be one of tsne, pca, lle, mds, isomap, umap, spectral, lda')
+        data_vis = data
 
     if display_size == 'small':
         s = 5
@@ -319,13 +319,16 @@ def cluster_visualize(model, data, display_type='tsne', n_components=2, display_
 
     if n_components == 2:
         # 绘制2D图形，使用不同颜色表示不同的聚类
+        fig = plt.figure(figsize=(15, 8))
         plt.scatter(data_vis[:, 0], data_vis[:, 1], c=model.labels_, s=s, alpha=alpha, edgecolors='none')
         plt.show()
+        fig.savefig('cluster_visualize.png')
     elif n_components == 3:
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
         ax.scatter(data_vis[:, 0], data_vis[:, 1], data_vis[:, 2], c=model.labels_, s=s, alpha=alpha, edgecolors='none')
         plt.show()
+        fig.savefig('cluster_visualize.png')
 
 
 def nearest_multiple(original_value, divisor, round_type='round'):

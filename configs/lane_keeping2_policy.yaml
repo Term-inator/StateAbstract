@@ -13,7 +13,7 @@ cluster:
   type: "birch"
   threshold: 0.5
 
-  K: 3
+  K: 9
 
 action:
   granularity:

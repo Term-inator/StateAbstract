@@ -47,7 +47,7 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('configs/lane_keeping_policy2.yaml')
+config = utils.load_yml('configs/intersection_policy.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
@@ -877,24 +877,23 @@ if __name__ == '__main__':
     # print(f'random_steady: {random_steady}')
     # print(f'raw_steady: {raw_steady}')
 
-    # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
-    # action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data),
-    #                                granularity={'acc': config['action']['granularity']['acc'],
-    #                                             'steer': config['action']['granularity']['steer']})
-    # # 对比聚类算法
-    # # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
-    #
+    env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
+    action_spliter = ActionSpliter(action_ranges=get_action_range(env_data, env_data),
+                                   granularity={'acc': config['action']['granularity']['acc'],
+                                                'steer': config['action']['granularity']['steer']})
+    # 对比聚类算法
+    # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
+
     # # 求 K 的最佳值
-    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(160, 161), calc_type=0b1111,
-    #             slide_window=4, epochs=1, parallel=False)
+    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(6, 40), calc_type=0b1111,
+                slide_window=3, epochs=1, parallel=False)
 
     # 可视化聚类结果
-    # model = _cluster(45, env_states, cluster_type='birch')
+    # model = _cluster(22, env_states, cluster_type='birch')
     # utils.cluster_visualize(model, env_states['data'], display_type='pca', n_components=2, display_size='normal')
 
     # 单个运行
     # K = config['cluster']['K']
-    # K = 9
     # cluster_type = config['cluster']['type']
     # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
     # policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
@@ -916,12 +915,12 @@ if __name__ == '__main__':
     # result_error = utils.compare_result_error(policy_info, output_info, config['property'])
     # print(result_error)
 
-    env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
-    policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
-    policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
-    config['data']['policy'].update(policy_info)
-    print(config['data']['policy'])
-    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(10, 36),
+    # env_data_raw, env_data, env_states = load_data(config['data'], data_type='env')
+    # policy_data_raw, policy_data, policy_states = load_data(config['data'], data_type='policy')
+    # policy_info = utils.get_info_from_data(policy_data_raw, config['property'])
+    # config['data']['policy'].update(policy_info)
+    # print(config['data']['policy'])
+    # gen_prism_codes(env_data, env_states, policy_data, policy_states, K_range=(1, 41),
     #                 granularity_range={'acc': [0.01], 'steer': [0.01]}, parallel=True)
     # execute_prism_codes(prism_file_paths='./tmp', parallel=True)
 

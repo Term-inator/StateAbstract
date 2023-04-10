@@ -77,6 +77,25 @@ class PrismParser:
         return self.add_transition(f'(state={node.state.tag}) & (sched=0)', updates=updates)
 
     def policy_reward(self, node):
+        """
+        不支持负奖励，虽然可以用两组 reward 分别计算正负奖励
+        rewards "positive"
+        ...
+        endrewards
+
+        rewards "negative"
+        ...
+        endrewards
+
+        性质写为
+        R{"positive"}=? [F C<={steps}]
+        R{"negative"}=? [F C<={steps}]
+        二者相减
+        但 R=? 不能用在 nondeterministic models
+        Rmin=? 和 Rmax=? 不能用 {"positive"} 和 {"negative"} 标记
+        :param node:
+        :return:
+        """
         return f'state={node.state.tag} : {node.state.reward if node.state.reward >= 0 else 0};'
 
     def declaration(self):
