@@ -109,7 +109,7 @@ def get_prism_experiment(file):
     return K, acc, steer, reward
 
 
-def comparison(rewards, episode_reward, title, save=False):
+def comparison(rewards, episode_reward, K_step, title, save=False):
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
@@ -117,11 +117,13 @@ def comparison(rewards, episode_reward, title, save=False):
         ax.plot(rewards[i][0], rewards[i][1], label=f'{rewards[i][2]}')
     K = list(rewards[0][0]) if len(rewards[0][0]) > len(rewards[1][0]) else list(rewards[1][0])
     K.sort()
-    plt.xticks(range(K[0], K[-1]+1, 3))
+    plt.xticks(range(K[0], K[-1]+1, K_step), fontsize=14)
+    plt.yticks(fontsize=14)
     plt.axhline(y=episode_reward, linestyle='--')
-    ax.set_xlabel('K')
-    plt.title(title)
-    plt.legend()
+    ax.set_xlabel('K', fontsize=14)
+    plt.title(title, fontsize=14)
+    plt.legend(fontsize=14)
+    # plt.subplots_adjust(left=10, right=2, top=2, bottom=10)
 
     plt.show()
 
@@ -146,59 +148,65 @@ if __name__ == '__main__':
     #
     # try_K_plot((x_sse, value_sse), (x_sil, value_sil), (x_ch, value_ch), (x_st, value_st), save=True)
 
-    file = os.path.join(directory, 'record.npy')
-    K, _, _, reward = get_prism_experiment(file)
-    print(np.vstack((K, reward)).T)
-    episode_reward_plot((K, reward), 11.02, save=True)
+    # file = os.path.join(directory, 'record.npy')
+    # K, _, _, reward = get_prism_experiment(file)
+    # print(np.vstack((K, reward)).T)
+    # episode_reward_plot((K, reward), 11.02, save=True)
 
-    # experiments = {
-    #     'acc': [
-    #         {
-    #             'dirs': ['cmp_policy', 'env_policy'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 59.94
-    #         },
-    #         {
-    #             'dirs': ['cmp_policy3', 'env_policy3'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 241.90
-    #         }
-    #     ],
-    #     'lane_keeping': [
-    #         {
-    #             'dirs': ['cmp_policy', 'env_policy'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 48.50
-    #         },
-    #         {
-    #             'dirs': ['cmp_policy2', 'env_policy2'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 46.40
-    #         }
-    #     ],
-    #     'intersection': [
-    #         {
-    #             'dirs': ['cmp_policy', 'env_policy'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 11.02
-    #         },
-    #         {
-    #             'dirs': ['cmp_policy2', 'env_policy2'],
-    #             'labels': ['no curiosity', 'use curiosity'],
-    #             'episode_reward': 9.36
-    #         }
-    #     ]
-    # }
+    experiments = {
+        'acc': [
+            {
+                'dirs': ['cmp_policy', 'env_policy'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 2,
+                'episode_reward': 59.94
+            },
+            {
+                'dirs': ['cmp_policy3', 'env_policy3'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 2,
+                'episode_reward': 241.90
+            }
+        ],
+        'lane_keeping': [
+            {
+                'dirs': ['cmp_policy', 'env_policy'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 3,
+                'episode_reward': 48.50
+            },
+            {
+                'dirs': ['cmp_policy2', 'env_policy2'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 3,
+                'episode_reward': 46.40
+            }
+        ],
+        'intersection': [
+            {
+                'dirs': ['cmp_policy', 'env_policy'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 2,
+                'episode_reward': 11.02
+            },
+            {
+                'dirs': ['cmp_policy2', 'env_policy2'],
+                'labels': ['no curiosity', 'use curiosity'],
+                'K_step': 2,
+                'episode_reward': 9.36
+            }
+        ]
+    }
 
-    # for task in experiments:
-    #     for i, exp in enumerate(experiments[task]):
-    #         dirs = exp['dirs']
-    #         labels = exp['labels']
-    #         episode_reward = exp['episode_reward']
-    #         rewards = []
-    #         for j, d in enumerate(dirs):
-    #             file = os.path.join('output', task, d, 'record.npy')
-    #             K, _, _, reward = get_prism_experiment(file)
-    #             rewards.append((K, reward, labels[j]))
-    #         title = f'{task} - policy {i + 1}'
-    #         comparison(rewards, episode_reward, title=title, save=True)
+    for task in experiments:
+        for i, exp in enumerate(experiments[task]):
+            dirs = exp['dirs']
+            labels = exp['labels']
+            episode_reward = exp['episode_reward']
+            rewards = []
+            for j, d in enumerate(dirs):
+                file = os.path.join('output', task, d, 'record.npy')
+                K, _, _, reward = get_prism_experiment(file)
+                rewards.append((K, reward, labels[j]))
+            title = f'{task} - policy {i + 1}'
+            comparison(rewards, episode_reward, K_step=exp['K_step'], title=title, save=True)

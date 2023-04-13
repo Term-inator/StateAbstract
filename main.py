@@ -47,7 +47,7 @@ def load_states(data):
     )
 
 
-config = utils.load_yml('configs/intersection_policy.yaml')
+config = utils.load_yml('configs/acc_policy.yaml')
 prism_path = 'C:/Program Files/prism-4.7/bin'
 
 
@@ -92,6 +92,8 @@ def _cluster(K, states, cluster_type):
         model = cluster.KMeans(K)
     elif cluster_type == 'mini_batch_kmeans':
         model = cluster.MiniBatchKMeans(K)
+    elif cluster_type == 'kmeans++':
+        model = cluster.KMeans(K, init='k-means++')
     elif cluster_type == 'agglomerative':
         model = cluster.AgglomerativeClustering(n_clusters=K)
     elif cluster_type == 'birch':
@@ -109,6 +111,8 @@ def _predict(model, state, cluster_type):
     if cluster_type == 'kmeans':
         return model.predict(state)
     elif cluster_type == 'mini_batch_kmeans':
+        return model.predict(state)
+    elif cluster_type == 'kmeans++':
         return model.predict(state)
     elif cluster_type == 'agglomerative':
         return model.fit_predict(state)
@@ -560,8 +564,8 @@ def cluster_compare(data, states, action_spliter, data_type='env', K_range=(10, 
     # 4. birch
     # 5. optics
     # 6. clique
-    algo_lst = ['kmeans', 'mini_batch_kmeans', 'agglomerative', 'birch']
-    algos = [(algo_lst[0], 'r'), (algo_lst[1], 'g'), (algo_lst[2], 'y'), (algo_lst[3], 'b')]
+    algo_lst = ['kmeans', 'mini_batch_kmeans', 'kmeans++', 'agglomerative', 'birch']
+    algos = [(algo_lst[0], 'g'), (algo_lst[1], 'y'), (algo_lst[2], 'orange'), (algo_lst[3], 'b'), (algo_lst[4], 'r')]
     mean_sts = []
     for algo, color in algos:
         _, _, _, mean_st = monte_carlo(data, states, action_spliter=action_spliter, data_type=data_type, epochs=epochs,
@@ -882,11 +886,11 @@ if __name__ == '__main__':
                                    granularity={'acc': config['action']['granularity']['acc'],
                                                 'steer': config['action']['granularity']['steer']})
     # 对比聚类算法
-    # cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 20), epochs=5, parallel=True)
+    cluster_compare(env_data, env_states, action_spliter=action_spliter, data_type='env', K_range=(10, 30), epochs=1, parallel=True)
 
     # # 求 K 的最佳值
-    monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(6, 40), calc_type=0b1111,
-                slide_window=3, epochs=1, parallel=False)
+    # monte_carlo(env_data, env_states, action_spliter, data_type='env', K_range=(6, 40), calc_type=0b1111,
+    #             slide_window=3, epochs=1, parallel=False)
 
     # 可视化聚类结果
     # model = _cluster(22, env_states, cluster_type='birch')
