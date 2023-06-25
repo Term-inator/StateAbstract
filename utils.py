@@ -62,9 +62,14 @@ def delete_threshold(data, threshold=10):
     return data
 
 
-def normalize(data, _min=None, _max=None):
+def normalize(data, _min: float = None, _max: float = None):
     """
     归一化
+    对于环境轨迹数据，参数 _min 和 _max 为 None
+    对于策略轨迹数据，参数 _min 和 _max 为对应环境轨迹数据的最小值和最大值
+    :param _min: 最小值
+    :param _max: 最大值
+    :return: 归一化后的数据、最小值和最大值
     TODO 尚不支持数组和 tqdm
     """
     norm_n = len(data[0].state.to_list())
@@ -97,9 +102,14 @@ def normalize(data, _min=None, _max=None):
     return data, _min, _max
 
 
-def standardize(data, _mean=None, _std=None):
+def standardize(data, _mean: float = None, _std: float = None) -> tuple:
     """
-    归一化
+    标准化
+    对于环境轨迹数据，参数 _mean 和 _std 为 None
+    对于策略轨迹数据，参数 _mean 和 _std 为对应环境轨迹数据的均值和标准差
+    :param _mean: 均值
+    :param _std: 标准差
+    :return: 标准化后的数据、均值和标准差
     """
     norm_n = len(data[0].state.to_list())
 
@@ -147,8 +157,12 @@ def standardize(data, _mean=None, _std=None):
     return data, _mean, _std
 
 
-def load_yml(path):
-    """load yaml file"""
+def load_yml(path: str) -> dict:
+    """
+    加载 yml 文件
+    :param path: 文件路径
+    :return:
+    """
     with open(path, 'r', encoding='utf-8') as rf:
         config = yaml.load(rf.read(), Loader=yaml.FullLoader)
     return config
@@ -158,7 +172,7 @@ def load_yml(path):
 memo = None
 
 
-def init_memo(K_max, n, m):
+def init_memo(K_max: int, n: int, m: int):
     """
     初始化 memo 数组
     """
@@ -173,7 +187,7 @@ def init_memo(K_max, n, m):
                 memo[i][j].append(-1)
 
 
-def calc_count(K, n, m):
+def calc_count(K: int, n: int, m: int) -> int:
     """
     计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字 有多少种
     """
@@ -194,30 +208,41 @@ def calc_count(K, n, m):
     return c1 + c2
 
 
-def calc_prob(K, n, m):
+def calc_prob(K: int, n: int, m: int) -> float:
     """
-    计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字的概率
+    计算从 K 个不同数字中可放回地取出 n 个，出现 m 种数字的概率，并用 1 减
     """
     return 1 - calc_count(K, n, m) / K ** n
 
 
-def stirling(n, m):
+def stirling(n: int, m: int) -> int:
+    """
+    计算第二类斯特林数
+    把 n个不同的数划分为 m个集合的方案数，要求不能为空集，不考虑顺序
+    :param n:
+    :param m:
+    :return:
+    """
     res = 0
     for i in range(m + 1):
         res += pow(-1, m - i) * pow(i, n) / (factorial(i, exact=True) * factorial(m - i, exact=True))
     return res
 
 
-def calc_count_opt(K, n, m):
+def calc_count_opt(K: int, n: int, m: int) -> int:
+    """
+    calc_count 函数的优化版
+    直接通过通项计算
+    """
     res = stirling(n, m)
     for i in range(0, m):
         res *= (K - i)
     return round(res)
 
 
-def opt_correct_prove():
+def opt_correct_prove() -> None:
     """
-    证明计算方式正确
+    证明 calc_count_opt 和 calc_count 等价
     :return:
     """
     init_memo(40, 40, 40)
@@ -235,9 +260,9 @@ def opt_correct_prove():
     print()
 
 
-def delta():
+def delta() -> None:
     """
-    比较两种计算方式的差值
+    查看 calc_count 结果的单调性
     :return:
     """
     init_memo(60, 60, 60)
@@ -246,7 +271,7 @@ def delta():
             for m in range(2, n + 1):
                 if calc_count(K, n, m) > calc_count(K, n, m - 1):
                     print('K = {}, n = {}, m = {}, inc'.format(K, n, m))
-                elif calc_count_opt(K, n, m) < calc_count_opt(K, n, m - 1):
+                elif calc_count(K, n, m) < calc_count(K, n, m - 1):
                     print('K = {}, n = {}, m = {}, dec'.format(K, n, m))
                 else:
                     print('K = {}, n = {}, m = {}, same'.format(K, n, m))
@@ -255,7 +280,16 @@ def delta():
     print()
 
 
-def cluster_visualize(model, data, display_type='tsne', n_components=2, display_size='normal'):
+def cluster_visualize(model, data, display_type: str='tsne', n_components: int=2, display_size: str='normal') -> None:
+    """
+    聚类可视化
+    :param model: 聚类后的模型
+    :param data: 数据
+    :param display_type: 降维方法
+    :param n_components: 降到几维
+    :param display_size: 图像中点的大小
+    :return:
+    """
     if display_type == 'tsne':
         # 进行t-SNE转换
         # 用于高维数据的降维和可视化。特别适用于聚类和类别之间的可视化差异。
@@ -331,7 +365,14 @@ def cluster_visualize(model, data, display_type='tsne', n_components=2, display_
         fig.savefig('cluster_visualize.png')
 
 
-def nearest_multiple(original_value, divisor, round_type='round'):
+def nearest_multiple(original_value: float, divisor: float, round_type: str='round') -> int:
+    """
+    根据 round_type 找到离 original_value 的最近的 divisor 的倍数
+    :param original_value: 初始值
+    :param divisor: 除数
+    :param round_type: 近似方法
+    :return:
+    """
     # 确保除数为正数
     divisor = abs(divisor)
 
@@ -348,20 +389,21 @@ def nearest_multiple(original_value, divisor, round_type='round'):
     return nearest
 
 
-def expand_action_range(action_range, granularity):
+def expand_action_range(action_range: list, granularity: float) -> tuple:
     """
     根据 granularity 扩展 action_range 为 granularity 的整数倍
-    :param action_range:
-    :param granularity:
+    :param action_range: 动作空间的初始范围
+    :param granularity: 离散化粒度
     :return:
     """
+    # 下界向下扩展，上界向上扩展
     return nearest_multiple(action_range[0], granularity, round_type='floor'), \
         nearest_multiple(action_range[1], granularity, round_type='ceil')
 
 
-def get_info_from_data(data, props_dict):
+def get_info_from_data(data: list, props_dict: dict) -> dict:
     """
-    计算每个 episode 的平均步数和平均累计奖励
+    计算每个 episode 的平均步数、平均累计奖励、（超出车道概率、碰撞概率、抵达终点概率）
     :param data:
     :return:
     """
@@ -422,14 +464,14 @@ def get_info_from_data(data, props_dict):
 def compare_result_error(ground_truth: dict, result: dict, props_dict: dict) -> dict:
     """
     比较 ground_truth 和 result 的误差
-    :param ground_truth:
-    :param result:
-    :param props_dict:
+    :param ground_truth: 性质真实值的字典
+    :param result: 性质实验结果的字典
+    :param props_dict: 要比较的性质
     :return:
     """
     error = {
-        'absolute': {},
-        'relative': {}
+        'absolute': {},  # 绝对误差
+        'relative': {}  # 相对误差
     }
     for key in props_dict['name']:
         error['absolute'][key] = result[key] - ground_truth[key]
@@ -444,6 +486,11 @@ def compare_result_error(ground_truth: dict, result: dict, props_dict: dict) -> 
 
 
 def class_from_path(path: str) -> Callable:
+    """
+    从路径获取类
+    :param path: 类的路径
+    :return: 类
+    """
     module_name, class_name = path.rsplit(".", 1)
     class_object = getattr(importlib.import_module(module_name), class_name)
     return class_object

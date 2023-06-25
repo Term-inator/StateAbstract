@@ -587,12 +587,13 @@ def cluster_compare(data, states, action_spliter, data_type='env', K_range=(10, 
     fig.savefig(f'./cluster_compare.png')
 
 
-def get_action_range(env_data, policy_data):
+def get_action_range(env_data, policy_data) -> dict:
     """
     获取动作的范围
     policy_data: {state_tag: {action_dict, reward}}
     """
     res = {}
+    # csv 中 action 对应的 column 名
     headers = env_data[0].action.headers
     for header in headers:
         res[header] = [10e5, -10e5]

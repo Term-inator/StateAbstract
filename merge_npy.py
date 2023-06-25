@@ -4,6 +4,11 @@ import numpy as np
 
 
 def merge_prism_experiment(file_list):
+    """
+    合并 npy 文件
+    :param file_list:
+    :return:
+    """
     tuples = []
     for file in file_list:
         data = np.load(file)

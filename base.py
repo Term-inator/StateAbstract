@@ -11,6 +11,13 @@ import utils
 
 
 def read_csv(config_data, data_type, parallel=False):
+    """
+    读取 csv 文件中的轨迹数据
+    :param config_data:
+    :param data_type:
+    :param parallel: 是否并行读取
+    :return:
+    """
     if parallel:
         def read_csv_chunk(csv_path, chunk_start, chunk_size, queue):
             for chunk in pd.read_csv(csv_path, chunksize=chunk_size, skiprows=chunk_start):
@@ -145,7 +152,12 @@ def read_csv(config_data, data_type, parallel=False):
     return np.array(data)
 
 
-def mean(lst):
+def mean(lst: list):
+    """
+    Base 类列表求均值
+    :param lst:
+    :return:
+    """
     n = len(lst)
     if n == 0:
         return None
@@ -158,11 +170,6 @@ def mean(lst):
         lst_mean /= n
         lst_mean.tag = lst[0].tag
         return lst_mean
-
-
-e_speed = 10
-e_distance = 20
-safe_distance = 10
 
 
 class Base:
@@ -300,6 +307,9 @@ class State(Base):
 
 
 class Action(Base):
+    """
+    动作类，包含动作信息
+    """
     def __init__(self, **kwargs):
         super(Action, self).__init__(**kwargs)
 
@@ -309,11 +319,19 @@ class Action(Base):
 
 
 class ActionSpliter:
-    def __init__(self, action_ranges, granularity):
+    """
+    轴平行区间盒抽象动作空间
+    """
+    def __init__(self, action_ranges: dict, granularity: dict):
+        """
+        :param action_ranges: 动作空间范围
+        :param granularity: 离散化粒度
+        """
         self.action_ranges = action_ranges
         self.granularity = granularity
         self._action_set = set()
 
+        # 扩展动作空间，使其长度为离散化粒度的倍数
         for key, value in self.action_ranges.items():
             self.action_ranges[key] = utils.expand_action_range(self.action_ranges[key], self.granularity[key])
 
@@ -321,6 +339,10 @@ class ActionSpliter:
 
     @property
     def action_len(self):
+        """
+        抽象后的动作空间的大小
+        :return:
+        """
         size = 1
         for key, value in self.action_ranges.items():
             width = int((value[1] - value[0]) / self.granularity[key])
@@ -328,6 +350,11 @@ class ActionSpliter:
         return size
 
     def action2id(self, action: Action):
+        """
+        将 action 映射到 id
+        :param action: 抽象后的动作
+        :return:
+        """
         res = 1  # 预留 action 0
         size = 1
         for key, value in vars(action).items():
@@ -357,6 +384,9 @@ class EnvType(enum.Enum):
 
 
 class Trajectory:
+    """
+    轨迹数据
+    """
     def __init__(self, config_data):
         self.config_data = config_data
         self.env_type = EnvType(self.config_data["env_type"])
@@ -394,11 +424,20 @@ class Trajectory:
 
 
 class Node:
-    def __init__(self, state):
+    """
+    MDP 模型节点
+    """
+    def __init__(self, state: State):
         self.state = state
         self.children = dict()  # (tag, action_id) -> weight
 
-    def add_child(self, tag, action_id):
+    def add_child(self, tag: int, action_id: int) -> None:
+        """
+        增加后继节点
+        :param tag: 后继节点 tag
+        :param action_id: 到后继节点的动作 id
+        :return:
+        """
         if (tag, action_id) not in self.children:
             self.children[(tag, action_id)] = 1
         else:
@@ -406,7 +445,10 @@ class Node:
 
 
 class Graph:
-    def __init__(self, data, K, action_spliter):
+    """
+    MDP 模型
+    """
+    def __init__(self, data, K: int, action_spliter: ActionSpliter):
         self.data = data
         self.K = K
         self.action_spliter = action_spliter
@@ -447,24 +489,34 @@ class Graph:
 
 
 class Property:
-    def __init__(self, name):
+    def __init__(self, name: str):
+        """
+        性质名称
+        :param name:
+        """
         self.name = name
 
-    def get_value(self, result_list, index):
+    def get_value(self, result_list: list, index: int) -> float:
         return float(result_list[index])
 
 
 class EpisodeRewardProperty(Property):
-    def __init__(self, name='episode_reward'):
+    """
+    累计奖励性质
+    """
+    def __init__(self, name: str = 'episode_reward'):
         super(EpisodeRewardProperty, self).__init__(name)
 
-    def get_value(self, result_list, index):
+    def get_value(self, result_list: list, index: int) -> float:
         return float(result_list[index])
 
 
 class OppositeProperty(Property):
-    def __init__(self, name):
+    """
+    获取 1 - 性质的值
+    """
+    def __init__(self, name: str):
         super(OppositeProperty, self).__init__(name)
 
-    def get_value(self, result_list, index):
+    def get_value(self, result_list: list, index: int) -> float:
         return 1 - float(result_list[index])

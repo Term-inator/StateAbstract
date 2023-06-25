@@ -1,6 +1,7 @@
 import json
 import os
 
+import base
 import utils
 
 
@@ -14,7 +15,11 @@ class PrismParser:
         self.env_action_space = self._env_action_space()
         self.special_action_id = 0
 
-    def _env_action_space(self):
+    def _env_action_space(self) -> set:
+        """
+        环境的动作空间
+        :return:
+        """
         _set = set()
         for tag in self.env_graph.nodes:
             node = self.env_graph.nodes[tag]
@@ -22,7 +27,14 @@ class PrismParser:
                 _set.add(action)
         return _set
 
-    def add_transition(self, guard, signal='', updates=None):
+    def add_transition(self, guard: str, signal: str = '', updates: list = None) -> str:
+        """
+        增加迁移
+        :param guard: guard 条件
+        :param signal: 信号
+        :param updates: 更新操作列表
+        :return:
+        """
         if updates is None:
             updates = []
         updates_str = ''
@@ -34,7 +46,13 @@ class PrismParser:
                 updates_str += f'{weight}: {update} + '
         return f'[{signal}] {guard} -> {updates_str};'
 
-    def env_transition(self, node, signal='update'):
+    def env_transition(self, node: base.Node, signal='update') -> str:
+        """
+        环境模型的迁移
+        :param node: 当前节点
+        :param signal: 目前忽略该参数
+        :return:
+        """
         action_dict = {}  # action_id -> [[next_state_id], weight_sum]
         for tag, action_id in node.children:
             weight = node.children[(tag, action_id)]
@@ -57,7 +75,13 @@ class PrismParser:
             codes.append(self.add_transition(f'(state={node.state.tag}) & (action={action_id}) & (sched=1)', updates=updates))
         return '\n'.join(codes)
 
-    def policy_transition(self, node, signal='update'):
+    def policy_transition(self, node: base.Node, signal='update') -> str:
+        """
+        策略模型的迁移
+        :param node: 当前节点
+        :param signal: 目前忽略该参数
+        :return:
+        """
         action_dict = {}  # action_id -> weight
         weight_sum = 0
         for tag, action_id in node.children:
@@ -178,7 +202,13 @@ endmodule
 
         return '\n'.join(codes)
 
-    def parse(self, save=False, file_path='./code.prism'):
+    def parse(self, save=False, file_path='./code.prism') -> str:
+        """
+        转换成 prism 代码
+        :param save: 是否保存
+        :param file_path: 文件名
+        :return: prism 代码
+        """
         code = f'{self.declaration()}\n{self.parse_policy()}\n{self.parse_env()}\n{self.parse_property()}'
         if save:
             print('save code to', file_path)
@@ -192,7 +222,14 @@ endmodule
 
         return code
 
-    def gen_property_file(self, avg_step: int, save=False, file_path='./property.props'):
+    def gen_property_file(self, avg_step: int, save=False, file_path='./property.props') -> str:
+        """
+        生成 property 文件
+        :param avg_step: 平均步数
+        :param save: 是否保存
+        :param file_path: 文件名
+        :return: property 代码
+        """
         state0 = self.policy_graph.nodes[0].state
         properties = [f'Rmin=? [C<={avg_step}]']
         for i, prop in enumerate(self.props_dict['name']):
